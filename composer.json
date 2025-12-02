@@ -6,8 +6,8 @@
   "require": {
     "php": "^8.2",
     "ext-json": "*",
-    "blackcatacademy/blackcat-crypto": "dev-main",
-    "blackcatacademy/blackcat-database": "dev-main"
+    "blackcat/crypto": "dev-main",
+    "blackcatacademy/blackcat-database": "dev-dev"
   },
   "autoload": {
     "psr-4": {
