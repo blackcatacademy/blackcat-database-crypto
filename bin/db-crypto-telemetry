@@ -1,0 +1,73 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+use BlackCat\DatabaseCrypto\Config\EncryptionMap;
+use BlackCat\DatabaseCrypto\Telemetry\MapMetrics;
+
+require __DIR__ . '/../vendor/autoload.php';
+
+/**
+ * Generate telemetry summary for an encryption map.
+ *
+ * Usage:
+ *   php bin/db-crypto-telemetry [mapPath] [--out=telemetry/db-crypto-metrics.json]
+ *   BLACKCAT_CRYPTO_MAP=./config/encryption.json php bin/db-crypto-telemetry --out=telemetry/metrics.json
+ */
+function dbcrypto_usage(): void
+{
+    fwrite(STDERR, "Usage: db-crypto-telemetry [mapPath] [--out=FILE]\n");
+    exit(1);
+}
+
+try {
+    $args = $argv;
+    array_shift($args); // script name
+
+    $mapPath = getenv('BLACKCAT_CRYPTO_MAP') ?: 'config/encryption.example.json';
+    $outPath = null;
+
+    foreach ($args as $i => $arg) {
+        if (str_starts_with($arg, '--out=')) {
+            $outPath = substr($arg, 6);
+            unset($args[$i]);
+            continue;
+        }
+        if ($arg === '--out') {
+            $outPath = $args[$i + 1] ?? null;
+            unset($args[$i], $args[$i + 1]);
+            continue;
+        }
+    }
+
+    $args = array_values($args);
+    if (count($args) > 0) {
+        $mapPath = $args[0];
+    }
+
+    if (!is_string($mapPath) || $mapPath === '') {
+        dbcrypto_usage();
+    }
+
+    $map = EncryptionMap::fromFile($mapPath);
+    $metrics = MapMetrics::summarize($map);
+
+    $json = json_encode($metrics, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    if ($json === false) {
+        throw new RuntimeException('Unable to encode metrics to JSON');
+    }
+
+    if ($outPath !== null && $outPath !== '') {
+        $dir = dirname($outPath);
+        if (!is_dir($dir) && !mkdir($dir, 0777, true) && !is_dir($dir)) {
+            throw new RuntimeException('Cannot create output directory: ' . $dir);
+        }
+        file_put_contents($outPath, $json . PHP_EOL);
+        fwrite(STDOUT, "Telemetry written to {$outPath}" . PHP_EOL);
+    } else {
+        fwrite(STDOUT, $json . PHP_EOL);
+    }
+} catch (Throwable $e) {
+    fwrite(STDERR, 'db-crypto-telemetry error: ' . $e->getMessage() . PHP_EOL);
+    exit(1);
+}

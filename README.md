@@ -79,5 +79,15 @@ Pro volitelnou kontrolu proti živému schématu připrav JSON dle [docs/SCHEMA.
 
 Brzy přibude CLI `db-crypto:dry-run` pro validaci mapy proti živé schémě (ROADMAP Stage 2). Zatím je k dispozici pouze PHP API.
 
+### Telemetrie mapy
+
+Generuj rychlý přehled manifestu (počty tabulek/sloupců, rozložení strategií/kontextů, chybějící strategie/kontexty) a nahraj ho jako CI artefakt:
+
+```bash
+# vstup z env BLACKCAT_CRYPTO_MAP nebo první argument (default config/encryption.example.json)
+php bin/db-crypto-telemetry config/encryption.example.json --out=telemetry/db-crypto-metrics.json
+```
+Výstup je JSON vhodný pro kontroly v CI (např. hlídání chybějících strategií/kontextů).
+
 ## Licence
 Proprietární / BlackCat Academy.

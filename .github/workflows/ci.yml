@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, json, dom, pdo, pdo_mysql
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Static analysis
+        run: vendor/bin/phpstan analyse --configuration=phpstan.neon
+
+      - name: Tests
+        run: vendor/bin/phpunit
+
+      - name: Generate telemetry snapshot
+        run: php bin/db-crypto-telemetry config/encryption.example.json --out=telemetry/db-crypto-metrics.json
+
+      - name: Upload telemetry artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-crypto-metrics
+          path: telemetry/db-crypto-metrics.json
