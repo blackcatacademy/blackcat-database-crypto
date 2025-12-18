@@ -5,7 +5,7 @@ declare(strict_types=1);
 use BlackCat\DatabaseCrypto\Config\EncryptionMap;
 use BlackCat\DatabaseCrypto\Telemetry\MapMetrics;
 
-require __DIR__ . '/../vendor/autoload.php';
+requireAutoloader();
 
 /**
  * Generate telemetry summary for an encryption map.
@@ -70,4 +70,44 @@ try {
 } catch (Throwable $e) {
     fwrite(STDERR, 'db-crypto-telemetry error: ' . $e->getMessage() . PHP_EOL);
     exit(1);
+}
+
+function requireAutoloader(): void
+{
+    $candidates = [
+        __DIR__ . '/../vendor/autoload.php',
+        __DIR__ . '/../../vendor/autoload.php',
+        __DIR__ . '/../../blackcat-database/vendor/autoload.php',
+        __DIR__ . '/../../blackcat-crypto/vendor/autoload.php',
+        __DIR__ . '/../../blackcat-core/vendor/autoload.php',
+    ];
+
+    foreach ($candidates as $path) {
+        if (is_file($path)) {
+            require $path;
+            registerPsr4('BlackCat\\DatabaseCrypto\\', __DIR__ . '/../src');
+            return;
+        }
+    }
+
+    fwrite(STDERR, "Cannot find an autoloader; run composer install or use the monorepo vendor.\n");
+    exit(1);
+}
+
+function registerPsr4(string $prefix, string $dir): void
+{
+    if (!is_dir($dir)) {
+        return;
+    }
+
+    spl_autoload_register(static function (string $class) use ($prefix, $dir): void {
+        if (strncmp($class, $prefix, strlen($prefix)) !== 0) {
+            return;
+        }
+        $relative = substr($class, strlen($prefix));
+        $path = $dir . '/' . str_replace('\\', '/', $relative) . '.php';
+        if (is_file($path)) {
+            require $path;
+        }
+    }, true, true);
 }

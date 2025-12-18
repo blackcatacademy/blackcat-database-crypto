@@ -2,30 +2,138 @@
 <?php
 declare(strict_types=1);
 
-require __DIR__ . '/../vendor/autoload.php';
+use BlackCat\Core\Database;
+use BlackCat\DatabaseCrypto\Config\EncryptionMap;
+use BlackCat\DatabaseCrypto\Diagnostics\BlackcatDatabaseSchemaCatalog;
+use BlackCat\DatabaseCrypto\Diagnostics\SchemaSnapshotBuilder;
 
-if ($argc < 2) {
-    fwrite(STDERR, "Usage: db-crypto-schema <dsn> [output.json]\n");
+requireAutoloader();
+
+[$options, $positionals] = parseArgs(array_slice($argv, 1));
+
+$source = strtolower((string)($options['source'] ?? ''));
+$dsn = (string)($options['dsn'] ?? '');
+$pos0 = (string)($positionals[0] ?? '');
+if ($dsn === '' && preg_match('~^(mysql|pgsql|sqlite):~i', $pos0)) {
+    $dsn = $pos0;
+}
+
+$output = $options['out'] ?? null;
+if ($output === null) {
+    $output = $dsn !== ''
+        ? ($positionals[1] ?? null) // db-crypto-schema <dsn> [output.json]
+        : ($positionals[0] ?? null); // db-crypto-schema [output.json]
+}
+$schema = $options['db-schema'] ?? null;
+
+if ($source === '') {
+    $source = $dsn !== '' ? 'db' : 'packages';
+}
+if (!in_array($source, ['db', 'packages'], true)) {
+    fwrite(STDERR, "db-crypto-schema: invalid --source (expected db|packages)\n");
+    exit(1);
+}
+if ($source === 'db' && $dsn === '') {
+    fwrite(STDERR, "db-crypto-schema: --source=db requires --dsn=...\n");
     exit(1);
 }
 
-$dsn = $argv[1];
-$output = $argv[2] ?? null;
-$user = getenv('DB_USER') ?: null;
-$pass = getenv('DB_PASSWORD') ?: null;
-$p = new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-$database = $p->query('select database()')->fetchColumn();
-$stmt = $p->prepare('SELECT TABLE_NAME, COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = :schema ORDER BY TABLE_NAME, ORDINAL_POSITION');
-$stmt->execute(['schema' => $database]);
-$tables = [];
-while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-    $table = strtolower($row['TABLE_NAME']);
-    $tables[$table][] = strtolower($row['COLUMN_NAME']);
+$tables = null;
+if (isset($options['map']) && is_string($options['map']) && $options['map'] !== '') {
+    $map = EncryptionMap::fromFile($options['map']);
+    $tables = array_keys($map->all());
 }
-$json = json_encode(['tables' => $tables], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-if ($output) {
-    file_put_contents($output, $json);
-    echo "Schema snapshot written to {$output}\n";
-} else {
-    echo $json . PHP_EOL;
+if (isset($options['tables']) && is_string($options['tables']) && $options['tables'] !== '') {
+    $tables = array_values(array_filter(array_map('trim', explode(',', $options['tables'])), static fn($s) => $s !== ''));
+}
+
+try {
+    if ($source === 'db') {
+        Database::init([
+            'dsn' => $dsn,
+            'user' => getenv('DB_USER') ?: null,
+            'pass' => getenv('DB_PASSWORD') ?: null,
+        ]);
+        $db = Database::getInstance();
+
+        $snapshot = SchemaSnapshotBuilder::forDatabase($db, $db->dialect(), is_string($schema) && $schema !== '' ? $schema : null)
+            ->build($tables);
+    } else {
+        $root = isset($options['blackcat-db-root']) && is_string($options['blackcat-db-root']) && $options['blackcat-db-root'] !== ''
+            ? (string)$options['blackcat-db-root']
+            : null;
+        $catalog = $root ? BlackcatDatabaseSchemaCatalog::fromRoot($root) : BlackcatDatabaseSchemaCatalog::fromAutodetectedRoot();
+        $snapshot = $catalog->snapshot($tables);
+    }
+    $json = $snapshot->toJson();
+
+    if (is_string($output) && $output !== '') {
+        file_put_contents($output, $json . PHP_EOL);
+        echo "Schema snapshot written to {$output}\n";
+    } else {
+        echo $json . PHP_EOL;
+    }
+} catch (Throwable $e) {
+    fwrite(STDERR, "db-crypto-schema failed: " . $e->getMessage() . "\n");
+    exit(1);
+}
+
+/**
+ * @param list<string> $args
+ * @return array{0:array<string,string>,1:list<string>}
+ */
+function parseArgs(array $args): array
+{
+    $options = [];
+    $positionals = [];
+    foreach ($args as $arg) {
+        if (str_starts_with($arg, '--')) {
+            [$key, $value] = array_pad(explode('=', substr($arg, 2), 2), 2, '1');
+            $options[$key] = $value;
+            continue;
+        }
+        $positionals[] = $arg;
+    }
+    return [$options, $positionals];
+}
+
+function requireAutoloader(): void
+{
+    $candidates = [
+        __DIR__ . '/../vendor/autoload.php',
+        __DIR__ . '/../../blackcat-database/vendor/autoload.php',
+        __DIR__ . '/../../blackcat-crypto/vendor/autoload.php',
+    ];
+
+    foreach ($candidates as $path) {
+        if (is_file($path)) {
+            require $path;
+            registerPsr4('BlackCat\\DatabaseCrypto\\', __DIR__ . '/../src');
+            registerPsr4('BlackCat\\Database\\', __DIR__ . '/../../blackcat-database/src');
+            registerPsr4('BlackCat\\Crypto\\', __DIR__ . '/../../blackcat-crypto/src');
+            registerPsr4('BlackCat\\Core\\', __DIR__ . '/../../blackcat-core/src');
+            return;
+        }
+    }
+
+    fwrite(STDERR, "Cannot find an autoloader; run composer install or use the monorepo vendor.\n");
+    exit(1);
+}
+
+function registerPsr4(string $prefix, string $dir): void
+{
+    if (!is_dir($dir)) {
+        return;
+    }
+
+    spl_autoload_register(static function (string $class) use ($prefix, $dir): void {
+        if (strncmp($class, $prefix, strlen($prefix)) !== 0) {
+            return;
+        }
+        $relative = substr($class, strlen($prefix));
+        $path = $dir . '/' . str_replace('\\', '/', $relative) . '.php';
+        if (is_file($path)) {
+            require $path;
+        }
+    }, true, true);
 }

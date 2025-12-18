@@ -14,11 +14,17 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: mbstring, json, dom, pdo, pdo_mysql
+          extensions: mbstring, json, dom, pdo, pdo_mysql, sodium
           coverage: none
+
+      - name: Configure Composer GitHub token
+        run: composer config -g github-oauth.github.com "${{ secrets.BLACKCAT_GITHUB_TOKEN || github.token }}"
 
       - name: Install dependencies
         run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Validate encryption plan (schema gate)
+        run: php bin/db-crypto-plan --schema=config/schema.snapshot.json --manifest=tests/fixtures/manifest.json config/encryption.example.json
 
       - name: Static analysis
         run: vendor/bin/phpstan analyse --configuration=phpstan.neon

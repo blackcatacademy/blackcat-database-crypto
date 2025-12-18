@@ -2,15 +2,22 @@
   "tables": {
     "users": {
       "columns": {
-        "ssn": {"strategy": "encrypt", "context": "core.vault"},
-        "email_hash": {"strategy": "hmac", "context": "core.hmac.email", "encoding": "hex"}
+        "email_hash": {
+          "strategy": "hmac",
+          "context": "core.hmac.email",
+          "encoding": "raw",
+          "write_key_version": true
+        }
       }
     },
     "orders": {
       "columns": {
-        "card_pan": {"strategy": "encrypt", "context": "payments.card"},
-        "card_pan_last4": {"strategy": "passthrough"},
-        "card_pan_token": {"strategy": "hmac", "context": "payments.card.token", "encoding": "base64"}
+        "encrypted_customer_blob": {
+          "strategy": "encrypt",
+          "context": "core.vault",
+          "write_key_version": true,
+          "write_encryption_meta": true
+        }
       }
     }
   }

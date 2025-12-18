@@ -1,0 +1,46 @@
+{
+    "tables": {
+        "orders": [
+            "id",
+            "tenant_id",
+            "uuid",
+            "uuid_bin",
+            "public_order_no",
+            "user_id",
+            "status",
+            "encrypted_customer_blob",
+            "encrypted_customer_blob_key_version",
+            "encryption_meta",
+            "currency",
+            "metadata",
+            "subtotal",
+            "discount_total",
+            "tax_total",
+            "total",
+            "payment_method",
+            "created_at",
+            "updated_at",
+            "version"
+        ],
+        "users": [
+            "id",
+            "email_hash",
+            "email_hash_key_version",
+            "password_hash",
+            "password_algo",
+            "password_key_version",
+            "is_active",
+            "is_locked",
+            "failed_logins",
+            "must_change_password",
+            "last_login_at",
+            "last_login_ip_hash",
+            "last_login_ip_key_version",
+            "created_at",
+            "updated_at",
+            "version",
+            "deleted_at",
+            "actor_role"
+        ]
+    }
+}

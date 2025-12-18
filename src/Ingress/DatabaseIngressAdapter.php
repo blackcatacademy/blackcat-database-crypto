@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace BlackCat\DatabaseCrypto\Ingress;
 
-use BlackCat\Database\Contracts\DatabaseIngressAdapterInterface;
+use BlackCat\Database\Contracts\DatabaseIngressCriteriaAdapterInterface;
 use BlackCat\DatabaseCrypto\Adapter\DatabaseCryptoAdapter;
 use BlackCat\DatabaseCrypto\Config\EncryptionMap;
 use InvalidArgumentException;
@@ -17,7 +17,7 @@ use InvalidArgumentException;
  * - Emit optional coverage callbacks (hooked up to VaultCoverageTracker / telemetry).
  * - Provide helper accessors for encrypting payloads before custom gateways consume them.
  */
-final class DatabaseIngressAdapter implements DatabaseIngressAdapterInterface
+final class DatabaseIngressAdapter implements DatabaseIngressCriteriaAdapterInterface
 {
     /**
      * @param DatabaseCryptoAdapter $adapter Underlying adapter that knows how to encrypt + call the gateway.
@@ -37,6 +37,7 @@ final class DatabaseIngressAdapter implements DatabaseIngressAdapterInterface
      * Encrypts + inserts the payload according to the manifest map and forwards it to the gateway.
      *
      * @param array<string,mixed> $payload
+     * @param array<string,mixed> $options
      */
     public function insert(string $table, array $payload, array $options = []): mixed
     {
@@ -51,6 +52,7 @@ final class DatabaseIngressAdapter implements DatabaseIngressAdapterInterface
      *
      * @param array<string,mixed> $payload
      * @param array<string,mixed> $criteria
+     * @param array<string,mixed> $options
      */
     public function update(string $table, array $payload, array $criteria, array $options = []): mixed
     {
@@ -72,6 +74,77 @@ final class DatabaseIngressAdapter implements DatabaseIngressAdapterInterface
         $encrypted = $this->adapter->encryptPayload($table, $payload);
         $this->emitCoverage($table, 'encrypt', array_keys($payload));
         return $encrypted;
+    }
+
+    /**
+     * Deterministic transform for query criteria (HMAC-only).
+     *
+     * @param array<string,mixed> $criteria
+     * @return array<string,mixed>
+     */
+    public function criteria(string $table, array $criteria): array
+    {
+        $this->assertTable($table, $criteria);
+
+        $definition = $this->map->columnsFor($table);
+        if ($definition === null || $criteria === []) {
+            return $criteria;
+        }
+
+        $hmacOnly = [];
+        $passthrough = [];
+
+        foreach ($criteria as $column => $value) {
+            $spec = $definition[strtolower((string)$column)] ?? null;
+            if (!is_array($spec)) {
+                $passthrough[$column] = $value;
+                continue;
+            }
+
+            $mode = strtolower((string)($spec['strategy'] ?? 'encrypt'));
+            if ($mode === 'hmac') {
+                $hmacOnly[$column] = $value;
+                continue;
+            }
+            if ($mode === 'passthrough') {
+                $passthrough[$column] = $value;
+                continue;
+            }
+            if ($mode === 'encrypt') {
+                throw new InvalidArgumentException(
+                    sprintf(
+                        'DatabaseIngressAdapter: criteria cannot include "%s" on table "%s" (strategy=encrypt is non-deterministic).',
+                        (string)$column,
+                        $table
+                    )
+                );
+            }
+
+            throw new InvalidArgumentException('DatabaseIngressAdapter: unknown strategy ' . $mode);
+        }
+
+        if ($hmacOnly === []) {
+            return $passthrough;
+        }
+
+        $hashed = $this->adapter->encryptPayload($table, $hmacOnly, ['purpose' => 'criteria', 'operation' => 'criteria']);
+        $this->emitCoverage($table, 'criteria', array_keys($hmacOnly));
+        return array_replace($passthrough, $hashed);
+    }
+
+    /**
+     * Decrypts encrypted columns according to the manifest map.
+     *
+     * @param array<string,mixed> $payload
+     * @param array{strict?:bool} $options
+     * @return array<string,mixed>
+     */
+    public function decrypt(string $table, array $payload, array $options = []): array
+    {
+        $this->assertTable($table, $payload);
+        $decrypted = $this->adapter->decryptPayload($table, $payload, $options);
+        $this->emitCoverage($table, 'decrypt', array_keys($payload));
+        return $decrypted;
     }
 
     /**

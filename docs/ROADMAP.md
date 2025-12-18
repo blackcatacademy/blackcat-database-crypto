@@ -1,21 +1,33 @@
 # blackcat-database-crypto – Roadmap
 
-## Stage 1 – Adaptive Encryptor (current)
-- [x] Konfigurovatelná mapa tabulek/sloupců (JSON/YAML nebo PHP array).
+## Stage 1 – Adaptive Encryptor ✅
+- [x] Konfigurovatelná mapa tabulek/sloupců (JSON nebo PHP array; YAML případně později).
 - [x] `DatabaseCryptoAdapter` (encrypt + HMAC) delegující na libovolný gateway.
-- [x] Referenční `PdoGateway` + unit testy pro `PayloadEncryptor`.
+- [x] Legacy `PdoGateway` (nyní `@deprecated`) + unit testy pro `PayloadEncryptor` (pouze jako reference mimo ekosystém).
 - [x] Manifest napojení (`BLACKCAT_CRYPTO_MANIFEST`) → shoda se zbytkem platformy.
+- [x] Integrační test: `blackcat-database` `IngressLocator` boot + `encrypt()` (crypto ↔ database).
+- [x] Read-side helper: `PayloadDecryptor` + `DatabaseIngressAdapter::decrypt()`.
 
-## Stage 2 – Schema-Aware Diagnostics
-- CLI `db-crypto:plan` validuje mapu oproti manifestu (`blackcat-crypto-manifests`) a umí načíst snapshot nebo přímé DB schema (`--schema` / `--dsn`) – hlásí chybějící/přebytečné sloupce.
-- `db-crypto-schema` generuje snapshoty přímo z databáze pro version-control / CI.
+## Stage 2 – Schema-Aware Diagnostics (current)
+- `db-crypto-plan` validuje mapu oproti manifestu (`blackcat-crypto-manifests`) a umí validovat i proti schématu (snapshot `--schema`, nebo `--schema-source=packages` jako single source of truth; volitelně live DB přes `--dsn`).
+- `db-crypto-schema` generuje snapshoty primárně z `blackcat-database` packages (Definitions), volitelně z live DB (`--source=db --dsn=...`) pro kontrolu instalace.
+- `db-crypto-keys-sync` synchronizuje lokální `*_vN.key` soubory do DB tabulky `crypto_keys` (inventář/audit; baseline pro rotace).
+- ✅ `db-crypto-telemetry` generuje JSON metriky mapy (coverage/strategie/kontexty) jako CI artefakt.
+- ✅ CI gate: `phpstan` + `phpunit` + `db-crypto-plan` (schema-source=packages).
+- ✅ Gateway `CoreDatabaseGateway` nad `BlackCat\Core\Database` (bez raw PDO; quoting + SQL comment).
+- ✅ Volitelné write-path meta: `write_key_version` + `write_encryption_meta` (auto doplnění `*_key_version` a `encryption_meta`).
+- ✅ Integrační test (skippable): `DatabaseIngressAdapter` ↔ generated repo (Orders) upsertByKeys + upsertManyRevive end-to-end.
+- ✅ Integrace do ostatních repozitářů: `docs/INTEGRATIONS.md` (např. `blackcat-auth` – criteria + zero‑boilerplate write‑path).
+- ✅ Modularita mapy: `includes` (skládání více JSON map bez duplikace konfigurace).
+- Pozn.: join/ops views pro crypto/KMS jsou řešené v `blackcat-database/views-library/crypto/joins-*.yaml` (single source of truth pro operace nad DB tabulkami).
 - Linter pro PR (GitHub Action) – JSON schema + phpunit test pro mapu.
 - Možnost označit sloupce jako `deterministic` (AEAD vs HMAC) podle potřeby indexů.
 
 ## Stage 3 – Transparent Query Hooks
+- Deterministic query helper: `DatabaseIngressAdapter::criteria()` (HMAC-only) + `DatabaseIngressCriteriaAdapterInterface`; `GenericCrudService::upsertByKeys()`/`existsByKeys()` a generated repo `getByUnique()` transformují lookup klíče před dotazem.
 - Middleware pro `blackcat-database` repositories (automatické zapojení do `BulkUpsertRepository`, `ContractRepository`).
 - Eventy `beforeInsert`/`beforeUpdate` obohacené o `encryption_context` pro observabilitu.
-- Podpora `decrypt()` helperů (např. pro audit logy, download endpoints).
+- ✅ Podpora `decrypt()` helperů (např. pro audit logy, download endpoints).
 
 ## Stage 4 – Tokenization & Search
 - Deterministické tokeny pro LIKE/ILIKE vyhledávání (kombinace HMAC + prefix tables).

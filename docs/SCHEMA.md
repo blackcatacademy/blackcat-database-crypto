@@ -5,10 +5,10 @@
 ```json
 {
   "tables": {
-    "users": ["id", "email", "ssn"],
-    "orders": ["id", "card_pan", "card_pan_last4"]
+    "users": ["id", "email_hash", "email_hash_key_version"],
+    "orders": ["id", "encrypted_customer_blob", "encrypted_customer_blob_key_version", "encryption_meta"]
   }
 }
 ```
 
-Stačí vypsat tabulky/sloupce, které existují (např. z `information_schema` nebo `blackcat-database` generovaných definic). CLI pak upozorní na všechny šifrované sloupce, které v DB nejsou, a vrátí exit code `2` pro snadnou integraci do CI.
+Snapshot můžeš vygenerovat přímo přes `bin/db-crypto-schema` (defaultně ze schema/Definitions v `blackcat-database` packages – single source of truth), případně volitelně z live DB přes `--source=db --dsn=...`. `db-crypto-plan` pak upozorní na všechny šifrované sloupce, které ve schématu chybí, a vrátí exit code `2` pro snadnou integraci do CI.

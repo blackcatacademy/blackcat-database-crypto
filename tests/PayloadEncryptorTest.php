@@ -17,7 +17,7 @@ final class PayloadEncryptorTest extends TestCase
     {
         parent::setUp();
         $config = CryptoConfig::fromEnv([
-            'BLACKCAT_KEYS_DIR' => __DIR__ . '/../fixtures/keys',
+            'BLACKCAT_KEYS_DIR' => __DIR__ . '/fixtures/keys',
         ]);
         $this->crypto = CryptoManager::boot($config);
     }
@@ -44,7 +44,7 @@ final class PayloadEncryptorTest extends TestCase
         $transformed = $encryptor->transform('users', $payload);
 
         self::assertNotSame($payload['ssn'], $transformed['ssn']);
-        self::assertStringStartsWith('ey', $transformed['ssn']); // envelope base64
+        self::assertStringStartsWith('{', $transformed['ssn']); // envelope JSON
         self::assertNotSame($payload['email_hash'], $transformed['email_hash']);
         self::assertMatchesRegularExpression('/^[0-9a-f]+$/', $transformed['email_hash']);
     }

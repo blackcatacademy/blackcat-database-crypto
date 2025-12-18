@@ -1,0 +1,130 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+use BlackCat\Core\Database;
+use BlackCat\DatabaseCrypto\Ops\CryptoKeysInventorySync;
+
+requireAutoloader();
+
+/**
+ * Sync local `*.key` files into the `crypto_keys` table for audit/rotation planning.
+ *
+ * Usage:
+ *   db-crypto-keys-sync --dsn="mysql:host=127.0.0.1;dbname=blackcat" [--user=...] [--pass=...] [--keys-dir=DIR] [--meta=JSON] [--strict]
+ *
+ * Env fallbacks:
+ *   DB_DSN, DB_USER, DB_PASSWORD, BLACKCAT_KEYS_DIR
+ */
+
+function usage(): void
+{
+    fwrite(STDERR, "Usage: db-crypto-keys-sync --dsn=DSN [--user=USER] [--pass=PASS] [--keys-dir=DIR] [--meta=JSON] [--strict]\n");
+    exit(1);
+}
+
+/**
+ * @param list<string> $args
+ * @return array<string,string|bool>
+ */
+function parse_args(array $args): array
+{
+    $out = [];
+    foreach ($args as $arg) {
+        if ($arg === '--strict') {
+            $out['strict'] = true;
+            continue;
+        }
+        if (!str_starts_with($arg, '--')) {
+            continue;
+        }
+        [$k, $v] = array_pad(explode('=', substr($arg, 2), 2), 2, '');
+        if ($k !== '') {
+            $out[$k] = $v;
+        }
+    }
+    return $out;
+}
+
+$opts = parse_args(array_slice($argv, 1));
+$dsn = (string)($opts['dsn'] ?? (getenv('DB_DSN') ?: ''));
+if ($dsn === '') {
+    usage();
+}
+
+$user = (string)($opts['user'] ?? (getenv('DB_USER') ?: ''));
+$pass = (string)($opts['pass'] ?? (getenv('DB_PASSWORD') ?: ''));
+$keysDir = (string)($opts['keys-dir'] ?? (getenv('BLACKCAT_KEYS_DIR') ?: ''));
+if ($keysDir === '') {
+    $keysDir = 'keys';
+}
+
+$meta = [];
+if (!empty($opts['meta'])) {
+    $decoded = json_decode((string)$opts['meta'], true);
+    if (is_array($decoded)) {
+        $meta = $decoded;
+    }
+}
+
+if (!Database::isInitialized()) {
+    Database::init([
+        'dsn' => $dsn,
+        'user' => $user !== '' ? $user : null,
+        'pass' => $pass !== '' ? $pass : null,
+        'appName' => 'blackcat-dbcrypto-keys-sync',
+    ]);
+}
+
+$db = Database::getInstance();
+$sync = new CryptoKeysInventorySync($db);
+
+$result = $sync->syncDirectory($keysDir, [
+    'strict' => (bool)($opts['strict'] ?? false),
+    'meta' => $meta,
+]);
+
+echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . PHP_EOL;
+exit($result['skipped'] > 0 ? 2 : 0);
+
+function requireAutoloader(): void
+{
+    $candidates = [
+        __DIR__ . '/../vendor/autoload.php',
+        __DIR__ . '/../../vendor/autoload.php',
+        __DIR__ . '/../../blackcat-database/vendor/autoload.php',
+        __DIR__ . '/../../blackcat-crypto/vendor/autoload.php',
+    ];
+
+    foreach ($candidates as $path) {
+        if (is_file($path)) {
+            require $path;
+            registerPsr4('BlackCat\\DatabaseCrypto\\', __DIR__ . '/../src');
+            registerPsr4('BlackCat\\Database\\', __DIR__ . '/../../blackcat-database/src');
+            registerPsr4('BlackCat\\Crypto\\', __DIR__ . '/../../blackcat-crypto/src');
+            registerPsr4('BlackCat\\Core\\', __DIR__ . '/../../blackcat-core/src');
+            return;
+        }
+    }
+
+    fwrite(STDERR, "Cannot find an autoloader; run composer install or use the monorepo vendor.\n");
+    exit(1);
+}
+
+function registerPsr4(string $prefix, string $dir): void
+{
+    if (!is_dir($dir)) {
+        return;
+    }
+
+    spl_autoload_register(static function (string $class) use ($prefix, $dir): void {
+        if (strncmp($class, $prefix, strlen($prefix)) !== 0) {
+            return;
+        }
+        $relative = substr($class, strlen($prefix));
+        $path = $dir . '/' . str_replace('\\', '/', $relative) . '.php';
+        if (is_file($path)) {
+            require $path;
+        }
+    }, true, true);
+}

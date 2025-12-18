@@ -1,0 +1,12 @@
+{
+  "tables": {
+    "Users": {
+      "columns": {
+        "Id": {"strategy": "passthrough"},
+        "SSN": {"strategy": "encrypt", "context": "core.vault"},
+        "Email_Hash": {"strategy": "hmac", "context": "core.hmac.email", "encoding": "hex"},
+        "Notes": {"strategy": "passthrough"}
+      }
+    }
+  }
+}

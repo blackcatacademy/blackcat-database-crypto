@@ -1,6 +1,6 @@
 parameters:
-  level: 7
+  level: 8
   paths:
     - src
   bootstrapFiles:
-    - vendor/autoload.php
+    - phpstan-bootstrap.php
