@@ -18,7 +18,7 @@ jobs:
           coverage: none
 
       - name: Configure Composer GitHub token
-        run: composer config -g github-oauth.github.com "${{ secrets.BLACKCAT_GITHUB_TOKEN || github.token }}"
+        run: composer config -g github-oauth.github.com "${{ secrets.BLACKCAT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}"
 
       - name: Install dependencies
         run: composer install --no-interaction --no-progress --prefer-dist
