@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 $autoloadCandidates = [
     __DIR__ . '/../vendor/autoload.php',
+    __DIR__ . '/../blackcat-database/vendor/autoload.php',
     __DIR__ . '/../../blackcat-database/vendor/autoload.php',
     __DIR__ . '/../../blackcat-crypto/vendor/autoload.php',
     __DIR__ . '/../../blackcat-core/vendor/autoload.php',
@@ -52,4 +53,5 @@ function dbcrypto_register_psr4(string $prefix, string $dir): void
 dbcrypto_register_psr4('BlackCat\\DatabaseCrypto\\', __DIR__ . '/../src');
 dbcrypto_register_psr4('BlackCat\\Crypto\\', __DIR__ . '/../../blackcat-crypto/src');
 dbcrypto_register_psr4('BlackCat\\Database\\', __DIR__ . '/../../blackcat-database/src');
+dbcrypto_register_psr4('BlackCat\\Database\\', __DIR__ . '/../blackcat-database/src');
 dbcrypto_register_psr4('BlackCat\\Core\\', __DIR__ . '/../../blackcat-core/src');

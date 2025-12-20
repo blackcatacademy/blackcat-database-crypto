@@ -24,12 +24,14 @@ final class DatabaseIngressAdapter implements DatabaseIngressCriteriaAdapterInte
      * @param EncryptionMap $map Manifest-derived map describing tables/columns/strategies.
      * @param bool $requireMappedTable When true, every ingest call must reference a table present in the map.
      * @param callable|null $coverageReporter Optional callback fn(string $table, string $operation, array $columns): void.
+     * @param bool $requireMappedColumns When true, every payload/criteria column must be present in the map.
      */
     public function __construct(
         private readonly DatabaseCryptoAdapter $adapter,
         private readonly EncryptionMap $map,
         private readonly bool $requireMappedTable = true,
         private readonly mixed $coverageReporter = null,
+        private readonly bool $requireMappedColumns = true,
     ) {
     }
 
@@ -97,6 +99,11 @@ final class DatabaseIngressAdapter implements DatabaseIngressCriteriaAdapterInte
         foreach ($criteria as $column => $value) {
             $spec = $definition[strtolower((string)$column)] ?? null;
             if (!is_array($spec)) {
+                if ($this->requireMappedColumns) {
+                    throw new InvalidArgumentException(
+                        sprintf('DatabaseIngressAdapter: column "%s" (table "%s") missing in encryption map.', (string)$column, $table)
+                    );
+                }
                 $passthrough[$column] = $value;
                 continue;
             }
@@ -148,7 +155,7 @@ final class DatabaseIngressAdapter implements DatabaseIngressCriteriaAdapterInte
     }
 
     /**
-     * Ensures the table exists in the map (if strict) and warns when payload columns are unmapped.
+     * Ensures the table exists in the map (if strict) and optionally requires every payload column to be mapped.
      *
      * @param array<string,mixed> $payload
      */
@@ -165,15 +172,11 @@ final class DatabaseIngressAdapter implements DatabaseIngressCriteriaAdapterInte
         $knownColumns = array_map('strtolower', array_keys($definition));
         foreach (array_keys($payload) as $column) {
             if (!in_array(strtolower((string)$column), $knownColumns, true)) {
-                // Instead of throwing, surface a gentle reminder so repositories can extend the map.
-                trigger_error(
-                    sprintf(
-                        'DatabaseIngressAdapter: column "%s" (table "%s") missing in encryption map – payload will pass through untouched.',
-                        (string)$column,
-                        $table
-                    ),
-                    E_USER_NOTICE
-                );
+                if ($this->requireMappedColumns) {
+                    throw new InvalidArgumentException(
+                        sprintf('DatabaseIngressAdapter: column "%s" (table "%s") missing in encryption map.', (string)$column, $table)
+                    );
+                }
             }
         }
     }

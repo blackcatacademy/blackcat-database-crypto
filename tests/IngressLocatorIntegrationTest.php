@@ -13,7 +13,6 @@ final class IngressLocatorIntegrationTest extends TestCase
         parent::tearDown();
 
         // Reset global env for other tests.
-        putenv('BLACKCAT_DB_ENCRYPTION_MAP');
         putenv('BLACKCAT_KEYS_DIR');
 
         if (class_exists(IngressLocator::class)) {
@@ -28,29 +27,35 @@ final class IngressLocatorIntegrationTest extends TestCase
             self::markTestSkipped('blackcat-database not available in this workspace.');
         }
 
-        $mapPath = realpath(__DIR__ . '/fixtures/encryption-map.json');
+        $blackcatDbRoot = $this->resolveBlackcatDatabaseRoot();
+        if ($blackcatDbRoot === null) {
+            self::markTestSkipped('blackcat-database packages not available (expected checkout with submodules).');
+        }
+
         $keysDir = realpath(__DIR__ . '/fixtures/keys');
-        if ($mapPath === false || $keysDir === false) {
+        if ($keysDir === false) {
             self::markTestSkipped('Test fixtures not available.');
         }
 
-        putenv('BLACKCAT_DB_ENCRYPTION_MAP=' . $mapPath);
         putenv('BLACKCAT_KEYS_DIR=' . $keysDir);
 
         IngressLocator::configure(null, null);
         $adapter = IngressLocator::adapter();
         self::assertNotNull($adapter);
 
-        $out = $adapter->encrypt('users', [
-            'id' => 1,
-            'ssn' => '123-45-6789',
-            'email_hash' => 'alice@example.com',
+        $outOrders = $adapter->encrypt('orders', [
+            'encrypted_customer_blob' => ['email' => 'alice@example.com', 'note' => 'hello'],
         ]);
+        self::assertStringStartsWith('{', (string)($outOrders['encrypted_customer_blob'] ?? ''));
+        self::assertNotSame('', (string)($outOrders['encrypted_customer_blob_key_version'] ?? ''));
+        self::assertNotSame('', (string)($outOrders['encryption_meta'] ?? ''));
 
-        self::assertNotSame('123-45-6789', $out['ssn']);
-        self::assertStringStartsWith('{', (string)$out['ssn']);
-        self::assertNotSame('alice@example.com', $out['email_hash']);
-        self::assertMatchesRegularExpression('/^[0-9a-f]+$/', (string)$out['email_hash']);
+        $outIdem = $adapter->encrypt('idempotency_keys', [
+            'key_hash' => 'alice@example.com',
+        ]);
+        self::assertNotSame('alice@example.com', (string)($outIdem['key_hash'] ?? ''));
+        self::assertMatchesRegularExpression('/^[0-9a-f]+$/', (string)($outIdem['key_hash'] ?? ''));
+        self::assertNotSame('', (string)($outIdem['key_hash_key_version'] ?? ''));
     }
 
     public function testConfigureOverridesKeysDirWithoutEnv(): void
@@ -59,18 +64,44 @@ final class IngressLocatorIntegrationTest extends TestCase
             self::markTestSkipped('blackcat-database not available in this workspace.');
         }
 
-        $mapPath = realpath(__DIR__ . '/fixtures/encryption-map.json');
+        $blackcatDbRoot = $this->resolveBlackcatDatabaseRoot();
+        if ($blackcatDbRoot === null) {
+            self::markTestSkipped('blackcat-database packages not available (expected checkout with submodules).');
+        }
+
         $keysDir = realpath(__DIR__ . '/fixtures/keys');
-        if ($mapPath === false || $keysDir === false) {
+        if ($keysDir === false) {
             self::markTestSkipped('Test fixtures not available.');
         }
 
         // Ensure overrides are the only input.
-        putenv('BLACKCAT_DB_ENCRYPTION_MAP');
         putenv('BLACKCAT_KEYS_DIR');
 
-        IngressLocator::configure($mapPath, $keysDir);
+        IngressLocator::configure(null, $keysDir);
         $adapter = IngressLocator::adapter();
         self::assertNotNull($adapter);
+    }
+
+    private function resolveBlackcatDatabaseRoot(): ?string
+    {
+        $env = getenv('BLACKCAT_DB_ROOT');
+        if (is_string($env) && trim($env) !== '') {
+            $real = realpath($env);
+            if ($real !== false && is_dir($real . '/packages')) {
+                return $real;
+            }
+        }
+
+        $repoLocal = realpath(__DIR__ . '/../blackcat-database');
+        if ($repoLocal !== false && is_dir($repoLocal . '/packages')) {
+            return $repoLocal;
+        }
+
+        $monorepo = realpath(__DIR__ . '/../../blackcat-database');
+        if ($monorepo !== false && is_dir($monorepo . '/packages')) {
+            return $monorepo;
+        }
+
+        return null;
     }
 }

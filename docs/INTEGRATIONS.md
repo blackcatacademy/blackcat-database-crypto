@@ -10,15 +10,18 @@ Cíl: v aplikačních repozitářích (např. `blackcat-auth`) řešit pouze bus
 
 ## 1) Minimální konfigurace (env)
 
-Ingress adapter (`BlackCat\Database\Crypto\IngressLocator`) se umí nabootovat automaticky, pokud existuje mapa + klíče:
+Ingress adapter (`BlackCat\Database\Crypto\IngressLocator`) se umí nabootovat automaticky, pokud existují packages mapy + klíče:
 
-- `BLACKCAT_DB_ENCRYPTION_MAP=./config/encryption.json`
+- (povinné) `blackcat-database/packages/*/schema/encryption-map.json` (1 soubor = 1 tabulka; pokrývá všechny sloupce z `Definitions::columns()`)
 - `BLACKCAT_KEYS_DIR=./keys` (standard: `*_vN.key`)
-- `BLACKCAT_CRYPTO_MANIFEST=/path/to/contexts/core.json`
+- (doporučeno) `BLACKCAT_CRYPTO_MANIFEST=/path/to/contexts/core.json`
 - `DB_DSN=...` (a volitelně `DB_USER`, `DB_PASSWORD`) – pro `BlackCat\Core\Database`
-- (doporučeno) `BLACKCAT_DB_ENCRYPTION_REQUIRED=1` – fail‑closed (pokud ingress nejde nabootovat, aplikace spadne hned)
 
 Pozn.: Snapshot/gate nástroje defaultně používají `blackcat-database` packages jako single source of truth (Definitions), takže nemusíš duplikovat schémata.
+
+Pozn.: zdroj mapy je záměrně **packages-only** (nejde přesměrovat přes env/map soubor), aby byl zdroj pravdy jednoznačný a bezpečný.
+Fail‑closed je default: pokud ingress nejde nabootovat (mapa/klíče/manifest), aplikace spadne hned.
+Pokud je `blackcat-database` nainstalované jako git repo se submoduly, je potřeba mít `packages/*` checkoutnuté (init/update submodulů).
 
 ### Doporučený bootstrap (1 řádek)
 
@@ -32,7 +35,8 @@ PlatformBootstrap::boot(); // CryptoManager + Core bridge + DB ingress
 
 ### Modulární mapy (includes)
 
-Šifrovací mapa může být složená z více souborů. To je ideální pro modulární ekosystém – každý modul/repo může dodat svůj malý fragment a „app-level“ mapa je jen složenina:
+Šifrovací mapa může být složená z více souborů přes `includes` (užitečné pro tooling/transform-only použití mimo `IngressLocator`).
+Pozn.: runtime ingress v `blackcat-database` používá packages-only mapy.
 
 ```json
 {
@@ -85,9 +89,8 @@ use BlackCat\Database\Packages\Users\Repository\UserRepository;
 
 $db = Database::getInstance();
 $repo = new UserRepository($db);
-if ($ingress = IngressLocator::adapter()) {
-    $repo->setIngressAdapter($ingress, 'users');
-}
+$ingress = IngressLocator::adapter(); // fail-closed (throws when misconfigured)
+$repo->setIngressAdapter($ingress, 'users');
 
 $repo->insert([
     'id' => 1,
@@ -104,10 +107,7 @@ Pak v aplikaci nikdy nepočítáš HMAC ručně – použiješ ingress:
 ```php
 use BlackCat\Database\Crypto\IngressLocator;
 
-$ingress = IngressLocator::adapter();
-if ($ingress === null) {
-    throw new RuntimeException('DB crypto ingress not configured');
-}
+$ingress = IngressLocator::adapter(); // fail-closed (throws when misconfigured)
 
 $crit = $ingress->criteria('users', ['email_hash' => $email]); // HMAC-only
 // … repo query / exists / upsertByKeys s $crit …
@@ -121,7 +121,7 @@ Pozn.: V novějších generated repos z `blackcat-database` se `getByUnique()` s
 
 `blackcat-auth` už dnes umí používat `blackcat-database` schéma (`users` tabulka). Další krok je:
 
-1) Nastavit `BLACKCAT_DB_ENCRYPTION_MAP` pro `users` citlivá pole (min. deterministické `email_hash`).
+1) Nastavit šifrovací mapu pro `users` citlivá pole (min. deterministické `email_hash`) v `blackcat-database/packages/users/schema/encryption-map.json`.
 2) V login flow používat `IngressLocator::adapter()->criteria('users', …)` pro lookup.
 3) Ve write‑path (seed uživatelů, registrace, změna e‑mailu) zapisovat plaintext – repo/service to samo zašifruje/HMAC.
 

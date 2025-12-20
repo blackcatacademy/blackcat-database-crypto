@@ -4,11 +4,13 @@ declare(strict_types=1);
 namespace BlackCat\DatabaseCrypto\Tests;
 
 use BlackCat\Core\Database;
-use BlackCat\Database\Installer;
-use BlackCat\Database\Registry;
 use BlackCat\DatabaseCrypto\Ops\CryptoKeysInventorySync;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\TestCase;
 
+#[RunTestsInSeparateProcesses]
+#[PreserveGlobalState(false)]
 final class CryptoKeysInventorySyncDbTest extends TestCase
 {
     public function testSyncDirectoryWorksAgainstInstalledSchema(): void
@@ -31,14 +33,7 @@ final class CryptoKeysInventorySyncDbTest extends TestCase
         }
 
         $db = Database::getInstance();
-        $installer = new Installer($db, $db->dialect());
-
-        // Install only the minimal required modules for crypto_keys inventory.
-        $registry = new Registry(
-            new \BlackCat\Database\Packages\Users\UsersModule(),
-            new \BlackCat\Database\Packages\CryptoKeys\CryptoKeysModule(),
-        );
-        $registry->installOrUpgradeAll($installer);
+        $this->recreateCryptoKeysTable($db);
 
         $sync = new CryptoKeysInventorySync($db);
         $result = $sync->syncDirectory(__DIR__ . '/fixtures/keys');
@@ -46,5 +41,45 @@ final class CryptoKeysInventorySyncDbTest extends TestCase
         self::assertGreaterThanOrEqual(1, $result['scanned']);
         self::assertGreaterThanOrEqual(1, $result['upserted']);
     }
-}
 
+    private function recreateCryptoKeysTable(Database $db): void
+    {
+        $drop = $db->isPg()
+            ? 'DROP TABLE IF EXISTS crypto_keys CASCADE'
+            : 'DROP TABLE IF EXISTS crypto_keys';
+        $db->exec($drop);
+
+        $schemaPath = $this->cryptoKeysTableSchemaPath($db);
+        $sql = file_get_contents($schemaPath);
+        if ($sql === false) {
+            throw new \RuntimeException('Unable to read schema SQL file: ' . $schemaPath);
+        }
+        $db->exec($sql);
+    }
+
+    private function cryptoKeysTableSchemaPath(Database $db): string
+    {
+        $root = $this->blackcatDatabaseRootDir();
+        $dialect = $db->isPg() ? 'postgres' : 'mysql';
+        $path = rtrim($root, '/\\') . '/packages/crypto-keys/schema/001_table.' . $dialect . '.sql';
+        if (!is_file($path)) {
+            throw new \RuntimeException('Schema SQL file not found: ' . $path);
+        }
+        return $path;
+    }
+
+    private function blackcatDatabaseRootDir(): string
+    {
+        $probe = '\\BlackCat\\Database\\Registry';
+        if (!class_exists($probe)) {
+            throw new \RuntimeException('blackcat-database is not autoloadable (missing ' . $probe . ')');
+        }
+        $file = (new \ReflectionClass($probe))->getFileName();
+        if ($file === false) {
+            throw new \RuntimeException('Cannot locate blackcat-database root directory');
+        }
+
+        // <root>/src/Registry.php -> <root>
+        return dirname($file, 2);
+    }
+}

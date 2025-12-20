@@ -56,11 +56,23 @@ final class DatabaseIngressAdapterGeneratedRepoIntegrationTest extends TestCase
             'tables' => [
                 'orders' => [
                     'columns' => [
+                        'uuid_bin' => [
+                            'strategy' => 'passthrough',
+                        ],
                         'encrypted_customer_blob' => [
                             'strategy' => 'encrypt',
                             'context' => 'core.vault',
                             'write_key_version' => true,
                             'write_encryption_meta' => true,
+                        ],
+                        'encrypted_customer_blob_key_version' => [
+                            'strategy' => 'passthrough',
+                        ],
+                        'encryption_meta' => [
+                            'strategy' => 'passthrough',
+                        ],
+                        'updated_at' => [
+                            'strategy' => 'passthrough',
                         ],
                     ],
                 ],

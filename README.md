@@ -2,8 +2,8 @@
 
 Automatický šifrovací/obfuskační adapter pro `blackcat-database`. Cílem je, aby aplikační kód pouze předal vstupní payload a adapter sám:
 
-1. Podle manifestu najde sloupce/sloty vyžadující šifrování nebo HMAC.
-2. Využije `blackcat-crypto` (`CryptoManager`) pro vytvoření envelope nebo značky.
+1. Podle packages encryption mapy (`blackcat-database/packages/*/schema/encryption-map.json`) najde sloupce vyžadující `encrypt` / `hmac`.
+2. Využije `blackcat-crypto` (`CryptoManager` + manifest slots) pro výběr správného klíče a vytvoření envelope nebo HMAC.
 3. Deleguje výsledek na původní `blackcat-database` write‑path (repository / service / CLI akce).
 
 Tím pádem se „vstup → šifrování → databáze“ zkrátí na jediný krok.
@@ -17,16 +17,19 @@ composer install
 # composer config -g github-oauth.github.com "$GITHUB_TOKEN"
 
 export BLACKCAT_CRYPTO_MANIFEST=../blackcat-crypto-manifests/contexts/core.json
+export BLACKCAT_KEYS_DIR=./tests/fixtures/keys
 php example.php   # lokální demo (encrypt + criteria)
-# validace mapy (snapshot)
-php bin/db-crypto-plan --schema=config/schema.snapshot.json config/encryption.example.json
-# nebo přímo proti živé DB (použije $DB_USER / $DB_PASSWORD)
-DB_USER=root DB_PASSWORD=secret php bin/db-crypto-plan --dsn=\"mysql:host=127.0.0.1;dbname=blackcat\" config/encryption.example.json
-# export schématu pro CI
-# (default: schema z blackcat-database packages)
-php bin/db-crypto-schema --map=config/encryption.example.json config/schema.snapshot.json
-# nebo přímo z live DB
-DB_USER=root DB_PASSWORD=secret php bin/db-crypto-schema --source=db --dsn=\"mysql:host=127.0.0.1;dbname=blackcat\" config/schema.snapshot.json
+
+# validace packages mapy oproti generated schématu (Definitions)
+php bin/db-crypto-plan --schema-source=packages
+
+# validace proti živé DB (doporučeno omezit přes --tables=... na nainstalované moduly)
+DB_USER=root DB_PASSWORD=secret php bin/db-crypto-plan --dsn=\"mysql:host=127.0.0.1;dbname=blackcat\" --tables=orders,idempotency_keys
+
+# telemetrie mapy + smoke stress (transform-only; bez DB)
+php bin/db-crypto-telemetry --out=telemetry/db-crypto-metrics.json
+php bin/db-crypto-stress --iterations=20000 --out=telemetry/db-crypto-stress.json
+php bin/db-crypto-health --generate-keys=1 --max-contexts=25 --out=telemetry/db-crypto-health.json
 
 # inventář klíčů do DB (audit/rotace)
 DB_DSN=\"mysql:host=127.0.0.1;dbname=blackcat\" DB_USER=root DB_PASSWORD=secret BLACKCAT_KEYS_DIR=./tests/fixtures/keys php bin/db-crypto-keys-sync
@@ -34,38 +37,17 @@ DB_DSN=\"mysql:host=127.0.0.1;dbname=blackcat\" DB_USER=root DB_PASSWORD=secret 
 
 ### Konfigurace šifrovaných polí
 
-`config/encryption.example.json` obsahuje mapu tabulek/sloupců:
+**Single source of truth:** per‑package mapy v `blackcat-database/packages/*/schema/encryption-map.json` (1 soubor = 1 tabulka).
 
-```json
-{
-  "tables": {
-    "users": {
-      "columns": {
-        "email_hash": {
-          "strategy": "hmac",
-          "context": "core.hmac.email",
-          "encoding": "raw",
-          "write_key_version": true
-        }
-      }
-    },
-    "orders": {
-      "columns": {
-        "encrypted_customer_blob": {
-          "strategy": "encrypt",
-          "context": "core.vault",
-          "write_key_version": true,
-          "write_encryption_meta": true
-        }
-      }
-    }
-  }
-}
-```
+Pravidla:
+- tabulka v mapě musí odpovídat `Definitions::table()`
+- mapa musí explicitně pokrýt všechny sloupce z `Definitions::columns()` (`encrypt`/`hmac`/`passthrough`)
+- `Definitions::uniqueKeys()` nesmí obsahovat `strategy=encrypt` sloupce (nedeterministické; pro UNIQUE používej `hmac`/`passthrough`)
+- `IngressLocator` mapu načítá **natvrdo z packages** (nejde přesměrovat přes env), aby byl zdroj pravdy jednoznačný
 
-Mapa může být i složená z více souborů přes `includes` (užitečné pro modularitu ekosystému) – viz `docs/INTEGRATIONS.md`.
+Pozn.: pokud máš `blackcat-database` jako git repo se submoduly, musí být `packages/*` checkoutnuté (např. `git submodule update --init --recursive`).
 
-Nahraj vlastní JSON / PHP pole, načti přes `EncryptionMap::fromFile()` a použij přes `blackcat-database` ingress (`IngressLocator`) nebo přímo přes `DatabaseCryptoAdapter` (transform-only).
+`EncryptionMap::fromFile()` (včetně `includes`) zůstává k dispozici pro tooling/testy/experimenty, ale runtime ingress v `blackcat-database` používá packages-only režim.
 
 ## API (doporučené použití přes `blackcat-database`)
 
@@ -76,9 +58,8 @@ use BlackCat\Database\Packages\Users\Repository\UserRepository;
 
 $db = Database::getInstance();
 $repo = new UserRepository($db);
-if ($ingress = IngressLocator::adapter()) {
-    $repo->setIngressAdapter($ingress, 'users');
-}
+$ingress = IngressLocator::adapter(); // fail-closed (throws when misconfigured)
+$repo->setIngressAdapter($ingress, 'users');
 
 $repo->insert([
     'email_hash' => 'alice@example.com'
@@ -116,9 +97,11 @@ Pro volitelnou kontrolu proti živému schématu připrav JSON dle [docs/SCHEMA.
 
 Použij CLI pro rychlou validaci mapy a tvorbu schema snapshotů:
 
-- `php bin/db-crypto-plan --schema-source=packages config/encryption.example.json` (single source of truth: `blackcat-database` packages)
-- `php bin/db-crypto-plan --schema=config/schema.snapshot.json config/encryption.example.json`
-- `DB_USER=... DB_PASSWORD=... php bin/db-crypto-plan --dsn=\"...\" config/encryption.example.json`
+- `php bin/db-crypto-plan --schema-source=packages` (validace packages mapy)
+- `DB_USER=... DB_PASSWORD=... php bin/db-crypto-plan --dsn=\"...\" --tables=orders,idempotency_keys` (validace subsetu proti live DB)
+- `php bin/db-crypto-telemetry --out=telemetry/db-crypto-metrics.json`
+- `php bin/db-crypto-stress --iterations=20000 --out=telemetry/db-crypto-stress.json`
+- `php bin/db-crypto-health --generate-keys=1 --max-contexts=25 --out=telemetry/db-crypto-health.json`
 
 Praktické integrační poznámky (např. `blackcat-auth`) jsou v [docs/INTEGRATIONS.md](./docs/INTEGRATIONS.md).
 
@@ -127,8 +110,7 @@ Praktické integrační poznámky (např. `blackcat-auth`) jsou v [docs/INTEGRAT
 Generuj rychlý přehled mapy (počty tabulek/sloupců, rozložení strategií/kontextů/HMAC encoding, chybějící strategie/kontexty) a nahraj ho jako CI artefakt:
 
 ```bash
-# vstup z env BLACKCAT_CRYPTO_MAP nebo první argument (default config/encryption.example.json)
-php bin/db-crypto-telemetry config/encryption.example.json --out=telemetry/db-crypto-metrics.json
+php bin/db-crypto-telemetry --out=telemetry/db-crypto-metrics.json
 ```
 Výstup je JSON vhodný pro kontroly v CI (např. hlídání chybějících strategií/kontextů).
 

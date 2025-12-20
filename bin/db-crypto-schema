@@ -101,6 +101,7 @@ function requireAutoloader(): void
 {
     $candidates = [
         __DIR__ . '/../vendor/autoload.php',
+        __DIR__ . '/../blackcat-database/vendor/autoload.php',
         __DIR__ . '/../../blackcat-database/vendor/autoload.php',
         __DIR__ . '/../../blackcat-crypto/vendor/autoload.php',
     ];
@@ -110,6 +111,7 @@ function requireAutoloader(): void
             require $path;
             registerPsr4('BlackCat\\DatabaseCrypto\\', __DIR__ . '/../src');
             registerPsr4('BlackCat\\Database\\', __DIR__ . '/../../blackcat-database/src');
+            registerPsr4('BlackCat\\Database\\', __DIR__ . '/../blackcat-database/src');
             registerPsr4('BlackCat\\Crypto\\', __DIR__ . '/../../blackcat-crypto/src');
             registerPsr4('BlackCat\\Core\\', __DIR__ . '/../../blackcat-core/src');
             return;

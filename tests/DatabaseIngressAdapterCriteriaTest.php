@@ -79,5 +79,32 @@ final class DatabaseIngressAdapterCriteriaTest extends TestCase
             'ssn' => '123-45-6789',
         ]);
     }
-}
 
+    public function testEncryptFailsOnUnmappedPayloadColumns(): void
+    {
+        $map = EncryptionMap::fromArray([
+            'tables' => [
+                'users' => [
+                    'columns' => [
+                        'ssn' => ['strategy' => 'encrypt', 'context' => 'core.vault'],
+                    ],
+                ],
+            ],
+        ]);
+
+        $nullGateway = new class implements DatabaseGatewayInterface {
+            public function insert(string $table, array $payload, array $options = []): mixed { return true; }
+            public function update(string $table, array $payload, array $criteria, array $options = []): mixed { return true; }
+        };
+
+        $adapter = new DatabaseCryptoAdapter($this->crypto, $map, $nullGateway);
+        $ingress = new DatabaseIngressAdapter($adapter, $map, true);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('missing in encryption map');
+        $ingress->encrypt('users', [
+            'id' => 123,
+            'ssn' => '123-45-6789',
+        ]);
+    }
+}

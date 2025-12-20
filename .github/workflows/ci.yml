@@ -10,6 +10,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout blackcat-database (packages source of truth)
+        uses: actions/checkout@v4
+        with:
+          repository: blackcatacademy/blackcat-database
+          path: blackcat-database
+          ref: dev
+          submodules: recursive
+          token: ${{ secrets.BLACKCAT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
@@ -23,8 +32,8 @@ jobs:
       - name: Install dependencies
         run: composer install --no-interaction --no-progress --prefer-dist
 
-      - name: Validate encryption plan (schema gate)
-        run: php bin/db-crypto-plan --schema=config/schema.snapshot.json --manifest=tests/fixtures/manifest.json config/encryption.example.json
+      - name: Validate packages encryption maps (schema gate)
+        run: php bin/db-crypto-plan --blackcat-db-root=blackcat-database --schema-source=packages
 
       - name: Static analysis
         run: vendor/bin/phpstan analyse --configuration=phpstan.neon
@@ -33,10 +42,19 @@ jobs:
         run: vendor/bin/phpunit
 
       - name: Generate telemetry snapshot
-        run: php bin/db-crypto-telemetry config/encryption.example.json --out=telemetry/db-crypto-metrics.json
+        run: php bin/db-crypto-telemetry --blackcat-db-root=blackcat-database --out=telemetry/db-crypto-metrics.json
+
+      - name: Stress smoke (transform-only)
+        run: php bin/db-crypto-stress --blackcat-db-root=blackcat-database --iterations=20000 --out=telemetry/db-crypto-stress.json
+
+      - name: Health report (monitoring-friendly)
+        run: php bin/db-crypto-health --blackcat-db-root=blackcat-database --generate-keys=1 --max-contexts=25 --out=telemetry/db-crypto-health.json
 
       - name: Upload telemetry artifact
         uses: actions/upload-artifact@v4
         with:
           name: db-crypto-metrics
-          path: telemetry/db-crypto-metrics.json
+          path: |
+            telemetry/db-crypto-metrics.json
+            telemetry/db-crypto-stress.json
+            telemetry/db-crypto-health.json
