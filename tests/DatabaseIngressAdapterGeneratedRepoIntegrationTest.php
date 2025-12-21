@@ -30,12 +30,12 @@ final class DatabaseIngressAdapterGeneratedRepoIntegrationTest extends TestCase
     public function testUpsertByKeysAndBulkReviveEncryptEndToEnd(): void
     {
         if (!class_exists(OrderRepository::class)) {
-            throw new \RuntimeException('blackcat-database generated packages not available (Orders repository missing). Ensure blackcat-database packages are checked out and autoloadable.');
+            $this->markTestSkipped('blackcat-database generated packages not available (Orders repository missing). Ensure packages are checked out and autoloadable to run this integration test.');
         }
 
         $dsn = (string)(getenv('DB_DSN') ?: (getenv('BC_TEST_DSN') ?: ''));
         if ($dsn === '') {
-            throw new \RuntimeException('Missing DB DSN for integration test. Set DB_DSN (preferred) or BC_TEST_DSN.');
+            $this->markTestSkipped('DB integration test requires DB_DSN (preferred) or BC_TEST_DSN.');
         }
 
         Database::init([

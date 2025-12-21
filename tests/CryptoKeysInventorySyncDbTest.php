@@ -17,7 +17,7 @@ final class CryptoKeysInventorySyncDbTest extends TestCase
     {
         $dsn = (string)(getenv('DB_DSN') ?: (getenv('BC_TEST_DSN') ?: ''));
         if ($dsn === '') {
-            throw new \RuntimeException('Missing DB DSN for integration test. Set DB_DSN (preferred) or BC_TEST_DSN.');
+            $this->markTestSkipped('DB integration test requires DB_DSN (preferred) or BC_TEST_DSN.');
         }
 
         $user = getenv('DB_USER') ?: (getenv('BC_TEST_DB_USER') ?: null);
