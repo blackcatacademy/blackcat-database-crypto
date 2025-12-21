@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "component": {
+    "id": "blackcat-database-crypto",
+    "name": "BlackCat Database Crypto",
+    "description": "Transparent crypto adapter for BlackCat Database writes (field-level envelope encryption + HMAC).",
+    "homepage": "https://github.com/blackcatacademy/blackcat-database-crypto",
+    "composer_package": "blackcatacademy/blackcat-database-crypto"
+  },
+  "cli": {
+    "entrypoints": [
+      {
+        "id": "db-crypto",
+        "command": "db-crypto",
+        "summary": "Database-crypto tooling (map validation, telemetry, health and stress tests).",
+        "type": "builtin"
+      }
+    ]
+  }
+}
+

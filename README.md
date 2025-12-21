@@ -15,26 +15,34 @@ That way, “input → encryption → database” becomes a single step.
 ```bash
 composer install
 
-# if Composer says "Could not authenticate against github.com":
-# composer config -g github-oauth.github.com "$GITHUB_TOKEN"
+# Create a runtime config file (preferred over env for security-critical paths).
+cat > ./telemetry/runtime.json <<'JSON'
+{
+  "crypto": {
+    "manifest": "../blackcat-crypto-manifests/contexts/core.json",
+    "keys_dir": "./tests/fixtures/keys"
+  }
+}
+JSON
 
-export BLACKCAT_CRYPTO_MANIFEST=../blackcat-crypto-manifests/contexts/core.json
-export BLACKCAT_KEYS_DIR=./tests/fixtures/keys
 php example.php   # local demo (encrypt + criteria)
 
+# Tooling lives in `blackcat-cli` (optional):
+# - blackcat db-crypto plan|telemetry|stress|health|schema|keys-sync
+
 # validate packages map against generated schema (Definitions)
-php bin/db-crypto-plan --schema-source=packages
+blackcat db-crypto plan --schema-source=packages --config=./telemetry/runtime.json
 
 # validate against a live DB (recommended: limit to installed modules via --tables=...)
-DB_USER=root DB_PASSWORD=secret php bin/db-crypto-plan --dsn=\"mysql:host=127.0.0.1;dbname=blackcat\" --tables=orders,idempotency_keys
+DB_USER=root DB_PASSWORD=secret blackcat db-crypto plan --dsn=\"mysql:host=127.0.0.1;dbname=blackcat\" --tables=orders,idempotency_keys --config=./telemetry/runtime.json
 
 # map telemetry + smoke stress (transform-only; no DB)
-php bin/db-crypto-telemetry --out=telemetry/db-crypto-metrics.json
-php bin/db-crypto-stress --iterations=20000 --out=telemetry/db-crypto-stress.json
-php bin/db-crypto-health --generate-keys=1 --max-contexts=25 --out=telemetry/db-crypto-health.json
+blackcat db-crypto telemetry --out=telemetry/db-crypto-metrics.json
+blackcat db-crypto stress --iterations=20000 --out=telemetry/db-crypto-stress.json --config=./telemetry/runtime.json
+blackcat db-crypto health --generate-keys=1 --max-contexts=25 --out=telemetry/db-crypto-health.json
 
 # key inventory into DB (audit/rotations)
-DB_DSN=\"mysql:host=127.0.0.1;dbname=blackcat\" DB_USER=root DB_PASSWORD=secret BLACKCAT_KEYS_DIR=./tests/fixtures/keys php bin/db-crypto-keys-sync
+DB_DSN=\"mysql:host=127.0.0.1;dbname=blackcat\" DB_USER=root DB_PASSWORD=secret blackcat db-crypto keys-sync --config=./telemetry/runtime.json
 ```
 
 ### Encrypted field configuration
@@ -97,13 +105,11 @@ For optional validation against a live schema, prepare JSON as described in [doc
 
 ## CLI / integrations
 
-Use the CLI to validate the map and build schema snapshots:
-
-- `php bin/db-crypto-plan --schema-source=packages` (validace packages mapy)
-- `DB_USER=... DB_PASSWORD=... php bin/db-crypto-plan --dsn=\"...\" --tables=orders,idempotency_keys` (validace subsetu proti live DB)
-- `php bin/db-crypto-telemetry --out=telemetry/db-crypto-metrics.json`
-- `php bin/db-crypto-stress --iterations=20000 --out=telemetry/db-crypto-stress.json`
-- `php bin/db-crypto-health --generate-keys=1 --max-contexts=25 --out=telemetry/db-crypto-health.json`
+CLI tooling is provided by `blackcat-cli` (optional) to keep this repo a pure library:
+- `blackcat db-crypto plan --schema-source=packages`
+- `blackcat db-crypto telemetry --out=telemetry/db-crypto-metrics.json`
+- `blackcat db-crypto stress --iterations=20000 --out=telemetry/db-crypto-stress.json`
+- `blackcat db-crypto health --generate-keys=1 --max-contexts=25 --out=telemetry/db-crypto-health.json`
 
 Practical integration notes (e.g. `blackcat-auth`) live in [docs/INTEGRATIONS.md](./docs/INTEGRATIONS.md).
 
@@ -112,7 +118,7 @@ Practical integration notes (e.g. `blackcat-auth`) live in [docs/INTEGRATIONS.md
 Generate a quick map summary (tables/columns count, strategy/context distribution, HMAC encoding, missing strategy/context) and upload it as a CI artifact:
 
 ```bash
-php bin/db-crypto-telemetry --out=telemetry/db-crypto-metrics.json
+blackcat db-crypto telemetry --out=telemetry/db-crypto-metrics.json
 ```
 The output is JSON suitable for CI checks (e.g. enforcing missing strategies/contexts).
 

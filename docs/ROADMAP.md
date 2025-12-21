@@ -4,16 +4,16 @@
 - [x] Configurable table/column map (JSON or PHP array; YAML later).
 - [x] `DatabaseCryptoAdapter` (encrypt + HMAC) delegating to any gateway.
 - [x] Legacy `PdoGateway` (now `@deprecated`) + unit tests for `PayloadEncryptor` (reference only; not used in the ecosystem).
-- [x] Manifest integration (`BLACKCAT_CRYPTO_MANIFEST`) to match the rest of the platform.
+- [x] Manifest integration (runtime config `crypto.manifest`) to match the rest of the platform.
 - [x] Integration test: `blackcat-database` `IngressLocator` boot + `encrypt()` (crypto ↔ database).
 - [x] Read-side helper: `PayloadDecryptor` + `DatabaseIngressAdapter::decrypt()`.
 
 ## Stage 2 – Schema-Aware Diagnostics (current)
-- `db-crypto-plan` validates the map against the manifest (`blackcat-crypto-manifests`) and can also validate against schema (snapshot `--schema`, or `--schema-source=packages` as single source of truth; optional live DB via `--dsn`).
-- `db-crypto-schema` generates snapshots primarily from `blackcat-database` packages (Definitions), optionally from a live DB (`--source=db --dsn=...`) to verify installation.
-- `db-crypto-keys-sync` syncs local `*_vN.key` files into the DB table `crypto_keys` (inventory/audit; baseline for rotations).
-- ✅ `db-crypto-telemetry` generates JSON map metrics (coverage/strategies/contexts) as a CI artifact.
-- ✅ CI gate: `phpstan` + `phpunit` + `db-crypto-plan` (schema-source=packages).
+- `blackcat db-crypto plan` validates the map against the manifest (`blackcat-crypto-manifests`) and can also validate against schema (snapshot `--schema`, or `--schema-source=packages` as single source of truth; optional live DB via `--dsn`).
+- `blackcat db-crypto schema` generates snapshots primarily from `blackcat-database` packages (Definitions), optionally from a live DB (`--source=db --dsn=...`) to verify installation.
+- `blackcat db-crypto keys-sync` syncs local key material into the DB table `crypto_keys` (inventory/audit; baseline for rotations).
+- ✅ `blackcat db-crypto telemetry` generates JSON map metrics (coverage/strategies/contexts) as a CI artifact.
+- ✅ CI gate: `phpstan` + `phpunit` + `blackcat db-crypto plan` (`--schema-source=packages`).
 - ✅ Gateway `CoreDatabaseGateway` over `BlackCat\Core\Database` (no raw PDO; quoting + SQL comment).
 - ✅ Optional write-path metadata: `write_key_version` + `write_encryption_meta` (auto-fill `*_key_version` and `encryption_meta`).
 - ✅ Integration test (skippable): `DatabaseIngressAdapter` ↔ generated repo (Orders) upsertByKeys + upsertManyRevive end-to-end.
