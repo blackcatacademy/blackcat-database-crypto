@@ -9,11 +9,13 @@ use BlackCat\DatabaseCrypto\Diagnostics\EncryptionPlanValidator;
 use BlackCat\DatabaseCrypto\Diagnostics\SchemaSnapshot;
 use BlackCat\DatabaseCrypto\Diagnostics\SchemaSnapshotBuilder;
 use BlackCat\Core\Database;
+use BlackCat\Config\Runtime\Config as RuntimeConfig;
 
 requireAutoloader();
 
 $args = array_slice($argv, 1);
 [$options, $positionals] = parseArgs($args);
+initRuntimeConfig($options);
 
 try {
     $mapPath = (string)($options['map'] ?? ($positionals[0] ?? ''));
@@ -54,7 +56,7 @@ try {
         }
         $map = EncryptionMap::fromArray(['tables' => $wrapped]);
     }
-    $manifestContexts = loadManifestContexts($options['manifest'] ?? getenv('BLACKCAT_CRYPTO_MANIFEST') ?: '');
+    $manifestContexts = loadManifestContexts(resolveManifestPath($options));
 
     $schemaSource = strtolower((string)($options['schema-source'] ?? ''));
     $schemaPath = (string)($options['schema'] ?? '');
@@ -102,7 +104,7 @@ try {
     if ($manifestContexts !== []) {
         echo sprintf("\nManifest contexts loaded (%d)\n", count($manifestContexts));
     } else {
-        echo "\nManifest contexts not loaded (set BLACKCAT_CRYPTO_MANIFEST or --manifest=path).\n";
+        echo "\nManifest contexts not loaded (set runtime config crypto.manifest or --manifest=path).\n";
     }
 
     if ($schemaSnapshot !== null) {
@@ -163,6 +165,48 @@ function loadManifestContexts(string $path): array
     return array_keys($json['slots']);
 }
 
+/**
+ * Initialize blackcat-config runtime config for CLI tools.
+ *
+ * @param array<string,string> $options
+ */
+function initRuntimeConfig(array $options): void
+{
+    $cfg = $options['config'] ?? ($options['config-file'] ?? null);
+    if ($cfg === '1') {
+        $cfg = '';
+    }
+    if (is_string($cfg) && trim($cfg) !== '') {
+        RuntimeConfig::initFromJsonFileIfNeeded(trim($cfg));
+        return;
+    }
+
+    RuntimeConfig::tryInitFromFirstAvailableJsonFile();
+}
+
+/**
+ * @param array<string,string> $options
+ */
+function resolveManifestPath(array $options): string
+{
+    $opt = $options['manifest'] ?? '';
+    if ($opt === '1') {
+        $opt = '';
+    }
+    if (is_string($opt) && trim($opt) !== '') {
+        return trim($opt);
+    }
+
+    if (RuntimeConfig::isInitialized()) {
+        $v = RuntimeConfig::get('crypto.manifest');
+        if (is_string($v) && trim($v) !== '') {
+            return trim($v);
+        }
+    }
+
+    return '';
+}
+
 function requireAutoloader(): void
 {
     $candidates = [
@@ -179,6 +223,7 @@ function requireAutoloader(): void
             registerPsr4('BlackCat\\Database\\', __DIR__ . '/../../blackcat-database/src');
             registerPsr4('BlackCat\\Database\\', __DIR__ . '/../blackcat-database/src');
             registerPsr4('BlackCat\\Crypto\\', __DIR__ . '/../../blackcat-crypto/src');
+            registerPsr4('BlackCat\\Config\\', __DIR__ . '/../../blackcat-config/src');
             registerPsr4('BlackCat\\Core\\', __DIR__ . '/../../blackcat-core/src');
             return;
         }

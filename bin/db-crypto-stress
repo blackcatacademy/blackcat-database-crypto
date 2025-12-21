@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use BlackCat\Crypto\Config\CryptoConfig;
 use BlackCat\Crypto\CryptoManager;
+use BlackCat\Config\Runtime\Config as RuntimeConfig;
 use BlackCat\DatabaseCrypto\Adapter\DatabaseCryptoAdapter;
 use BlackCat\DatabaseCrypto\Config\EncryptionMap;
 use BlackCat\DatabaseCrypto\Config\PackagesEncryptionMapLoader;
@@ -17,11 +18,12 @@ requireAutoloader();
  *
  * Usage:
  *   php bin/db-crypto-stress [--blackcat-db-root=DIR] [--tables=a,b] [--iterations=N] [--out=FILE]
- *                         [--key-versions=N] [--keys-dir=DIR] [--generate-keys=1]
+ *                         [--key-versions=N] [--keys-dir=DIR] [--generate-keys=1] [--config=/path/to/config.json]
  *
  * Notes:
  * - Does not require a DB connection (transform-only).
- * - By default uses BLACKCAT_KEYS_DIR; if missing, generates ephemeral per-context keys.
+ * - Uses runtime config crypto.keys_dir by default (or --keys-dir when runtime config is not initialized).
+ * - Ephemeral keys are generated only when --generate-keys=1 is used.
  * - Includes decrypt + fallback + basic HMAC verification (rotation-safe).
  */
 
@@ -30,7 +32,7 @@ function usage(): void
     fwrite(
         STDERR,
         "Usage: db-crypto-stress [--blackcat-db-root=DIR] [--tables=a,b] [--iterations=N] [--out=FILE] [--key-versions=N]\n"
-        . "                       [--keys-dir=DIR] [--generate-keys=1]\n"
+        . "                       [--keys-dir=DIR] [--generate-keys=1] [--config=/path/to/config.json]\n"
     );
     exit(1);
 }
@@ -153,7 +155,9 @@ function writeHexKey(string $keysDir, string $context, int $version): void
 {
     $bytes = hash('sha256', $context . '|v' . $version, true);
     $hex = bin2hex($bytes);
-    file_put_contents(keyHexPath($keysDir, $context, $version), $hex . PHP_EOL);
+    $path = keyHexPath($keysDir, $context, $version);
+    file_put_contents($path, $hex . PHP_EOL);
+    @chmod($path, 0600);
 }
 
 /**
@@ -353,6 +357,9 @@ try {
         usage();
     }
 
+    $generateKeys = optBool($options, 'generate-keys', false);
+    initRuntimeConfig($options, !$generateKeys);
+
     $iterations = optInt($options, 'iterations', 20_000);
     if ($iterations < 1) {
         throw new RuntimeException('--iterations must be >= 1');
@@ -398,22 +405,19 @@ try {
         throw new RuntimeException('No encrypt/hmac contexts found in the packages map (nothing to stress).');
     }
 
-    $keysDir = optString($options, 'keys-dir') ?? optString($options, 'keys_dir');
-    if ($keysDir === null) {
-        $env = getenv('BLACKCAT_KEYS_DIR');
-        if (is_string($env) && trim($env) !== '') {
-            $keysDir = trim($env);
-        }
-    }
-
-    $forceGenerate = optBool($options, 'generate-keys', false);
     $generatedKeys = false;
-    if ($forceGenerate || $keysDir === null) {
+    if ($generateKeys) {
         $keysDir = sys_get_temp_dir() . '/bcat-dbcrypto-stress-keys-' . bin2hex(random_bytes(5));
-        if (!is_dir($keysDir) && !mkdir($keysDir, 0770, true) && !is_dir($keysDir)) {
+        if (!is_dir($keysDir) && !mkdir($keysDir, 0700, true) && !is_dir($keysDir)) {
             throw new RuntimeException('Cannot create temp keys dir: ' . $keysDir);
         }
+        @chmod($keysDir, 0700);
         $generatedKeys = true;
+    } else {
+        $keysDir = resolveKeysDir($options);
+        if ($keysDir === null) {
+            throw new RuntimeException('Missing crypto keys dir (set runtime config crypto.keys_dir or pass --keys-dir=DIR, or use --generate-keys=1).');
+        }
     }
 
     if (!is_dir($keysDir)) {
@@ -426,10 +430,13 @@ try {
     }
 
     // Force local-only KMS for deterministic stress results.
-    $crypto = CryptoManager::boot(CryptoConfig::fromEnv([
-        'BLACKCAT_KEYS_DIR' => $keysDir,
+    $env = [
         'BLACKCAT_KMS_ENDPOINTS' => '[]',
-    ]));
+    ];
+    if (!RuntimeConfig::isInitialized()) {
+        $env['BLACKCAT_KEYS_DIR'] = $keysDir;
+    }
+    $crypto = CryptoManager::boot(CryptoConfig::fromEnv($env));
 
     $nullGateway = new class implements DatabaseGatewayInterface {
         public function insert(string $table, array $payload, array $options = []): mixed { return true; }
@@ -749,6 +756,54 @@ try {
     exit(1);
 }
 
+/**
+ * Initialize blackcat-config runtime config for CLI tools.
+ *
+ * @param array<string,string> $options
+ */
+function initRuntimeConfig(array $options, bool $auto = true): void
+{
+    $cfg = $options['config'] ?? ($options['config-file'] ?? null);
+    if ($cfg === '1') {
+        $cfg = '';
+    }
+
+    if (!$auto) {
+        if (is_string($cfg) && trim($cfg) !== '') {
+            throw new RuntimeException('--generate-keys is incompatible with --config/--config-file.');
+        }
+        return;
+    }
+
+    if (is_string($cfg) && trim($cfg) !== '') {
+        RuntimeConfig::initFromJsonFileIfNeeded(trim($cfg));
+        return;
+    }
+
+    if ($auto) {
+        RuntimeConfig::tryInitFromFirstAvailableJsonFile();
+    }
+}
+
+/**
+ * Resolve keys dir from runtime config (preferred) or CLI flags.
+ *
+ * @param array<string,string> $options
+ */
+function resolveKeysDir(array $options): ?string
+{
+    if (RuntimeConfig::isInitialized()) {
+        $v = RuntimeConfig::get('crypto.keys_dir');
+        if (is_string($v) && trim($v) !== '') {
+            return trim($v);
+        }
+        return null;
+    }
+
+    $opt = optString($options, 'keys-dir') ?? optString($options, 'keys_dir');
+    return $opt !== null && $opt !== '' ? $opt : null;
+}
+
 function requireAutoloader(): void
 {
     $candidates = [
@@ -765,6 +820,7 @@ function requireAutoloader(): void
             require $path;
             registerPsr4('BlackCat\\DatabaseCrypto\\', __DIR__ . '/../src');
             registerPsr4('BlackCat\\Crypto\\', __DIR__ . '/../../blackcat-crypto/src');
+            registerPsr4('BlackCat\\Config\\', __DIR__ . '/../../blackcat-config/src');
             registerPsr4('BlackCat\\Database\\', __DIR__ . '/../../blackcat-database/src');
             registerPsr4('BlackCat\\Database\\', __DIR__ . '/../blackcat-database/src');
             registerPsr4('BlackCat\\Core\\', __DIR__ . '/../../blackcat-core/src');

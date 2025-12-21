@@ -8,6 +8,7 @@
     "ext-json": "*",
     "ext-pdo": "*",
     "ext-sodium": "*",
+    "blackcatacademy/blackcat-config": "dev-dev",
     "blackcat/crypto": "dev-dev as dev-main",
     "blackcatacademy/blackcat-database": "dev-dev"
   },
@@ -37,6 +38,10 @@
     {
       "type": "vcs",
       "url": "https://github.com/blackcatacademy/blackcat-core"
+    },
+    {
+      "type": "vcs",
+      "url": "https://github.com/blackcatacademy/blackcat-config"
     },
     {
       "type": "vcs",

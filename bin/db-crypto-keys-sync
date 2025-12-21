@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use BlackCat\Core\Database;
+use BlackCat\Config\Runtime\Config as RuntimeConfig;
 use BlackCat\DatabaseCrypto\Ops\CryptoKeysInventorySync;
 
 requireAutoloader();
@@ -11,15 +12,18 @@ requireAutoloader();
  * Sync local `*.key` files into the `crypto_keys` table for audit/rotation planning.
  *
  * Usage:
- *   db-crypto-keys-sync --dsn="mysql:host=127.0.0.1;dbname=blackcat" [--user=...] [--pass=...] [--keys-dir=DIR] [--meta=JSON] [--strict]
+ *   db-crypto-keys-sync --dsn="mysql:host=127.0.0.1;dbname=blackcat" [--user=...] [--pass=...] [--keys-dir=DIR] [--meta=JSON] [--strict] [--config=/path/to/config.json]
+ *
+ * Config:
+ *   - crypto.keys_dir (recommended)
  *
  * Env fallbacks:
- *   DB_DSN, DB_USER, DB_PASSWORD, BLACKCAT_KEYS_DIR
+ *   DB_DSN, DB_USER, DB_PASSWORD
  */
 
 function usage(): void
 {
-    fwrite(STDERR, "Usage: db-crypto-keys-sync --dsn=DSN [--user=USER] [--pass=PASS] [--keys-dir=DIR] [--meta=JSON] [--strict]\n");
+    fwrite(STDERR, "Usage: db-crypto-keys-sync --dsn=DSN [--user=USER] [--pass=PASS] [--keys-dir=DIR] [--meta=JSON] [--strict] [--config=/path/to/config.json]\n");
     exit(1);
 }
 
@@ -47,6 +51,7 @@ function parse_args(array $args): array
 }
 
 $opts = parse_args(array_slice($argv, 1));
+initRuntimeConfig($opts);
 $dsn = (string)($opts['dsn'] ?? (getenv('DB_DSN') ?: ''));
 if ($dsn === '') {
     usage();
@@ -54,9 +59,9 @@ if ($dsn === '') {
 
 $user = (string)($opts['user'] ?? (getenv('DB_USER') ?: ''));
 $pass = (string)($opts['pass'] ?? (getenv('DB_PASSWORD') ?: ''));
-$keysDir = (string)($opts['keys-dir'] ?? (getenv('BLACKCAT_KEYS_DIR') ?: ''));
+$keysDir = resolveKeysDir($opts);
 if ($keysDir === '') {
-    $keysDir = 'keys';
+    usage();
 }
 
 $meta = [];
@@ -87,6 +92,44 @@ $result = $sync->syncDirectory($keysDir, [
 echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . PHP_EOL;
 exit($result['skipped'] > 0 ? 2 : 0);
 
+/**
+ * @param array<string,string|bool> $opts
+ */
+function initRuntimeConfig(array $opts): void
+{
+    $cfg = $opts['config'] ?? ($opts['config-file'] ?? null);
+    if ($cfg === '1') {
+        $cfg = '';
+    }
+    if (is_string($cfg) && trim($cfg) !== '') {
+        RuntimeConfig::initFromJsonFileIfNeeded(trim($cfg));
+        return;
+    }
+
+    RuntimeConfig::tryInitFromFirstAvailableJsonFile();
+}
+
+/**
+ * @param array<string,string|bool> $opts
+ */
+function resolveKeysDir(array $opts): string
+{
+    $opt = $opts['keys-dir'] ?? ($opts['keys_dir'] ?? null);
+    if (is_string($opt) && trim($opt) !== '') {
+        return trim($opt);
+    }
+
+    if (RuntimeConfig::isInitialized()) {
+        $v = RuntimeConfig::get('crypto.keys_dir');
+        if (is_string($v) && trim($v) !== '') {
+            return trim($v);
+        }
+    }
+
+    fwrite(STDERR, "Missing keys dir: pass --keys-dir=DIR or set runtime config crypto.keys_dir (or use --config=...)\n");
+    return '';
+}
+
 function requireAutoloader(): void
 {
     $candidates = [
@@ -104,6 +147,7 @@ function requireAutoloader(): void
             registerPsr4('BlackCat\\Database\\', __DIR__ . '/../../blackcat-database/src');
             registerPsr4('BlackCat\\Database\\', __DIR__ . '/../blackcat-database/src');
             registerPsr4('BlackCat\\Crypto\\', __DIR__ . '/../../blackcat-crypto/src');
+            registerPsr4('BlackCat\\Config\\', __DIR__ . '/../../blackcat-config/src');
             registerPsr4('BlackCat\\Core\\', __DIR__ . '/../../blackcat-core/src');
             return;
         }

@@ -37,9 +37,9 @@ final class IngressLocatorIntegrationTest extends TestCase
             self::markTestSkipped('Test fixtures not available.');
         }
 
-        putenv('BLACKCAT_KEYS_DIR=' . $keysDir);
-
-        IngressLocator::configure(null, null);
+        // Runtime config is the preferred/strict path, but this test suite must remain hermetic.
+        // Use the explicit keys-dir override (no env fallback).
+        IngressLocator::configure(null, $keysDir);
         $adapter = IngressLocator::adapter();
         self::assertNotNull($adapter);
 

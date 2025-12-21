@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use BlackCat\Crypto\Config\CryptoConfig;
 use BlackCat\Crypto\CryptoManager;
+use BlackCat\Config\Runtime\Config as RuntimeConfig;
 use BlackCat\DatabaseCrypto\Config\EncryptionMap;
 use BlackCat\DatabaseCrypto\Config\PackagesEncryptionMapLoader;
 use BlackCat\DatabaseCrypto\Telemetry\MapMetrics;
@@ -14,7 +15,7 @@ function usage(): void
 {
     fwrite(
         STDERR,
-        "Usage: db-crypto-health [--blackcat-db-root=DIR] [--tables=a,b] [--keys-dir=DIR] [--generate-keys=1]\n"
+        "Usage: db-crypto-health [--blackcat-db-root=DIR] [--tables=a,b] [--keys-dir=DIR] [--generate-keys=1] [--config=/path/to/config.json]\n"
         . "                     [--check-all=1] [--max-contexts=N] [--out=FILE]\n"
     );
     exit(1);
@@ -144,6 +145,7 @@ function writeHexKey(string $keysDir, string $context, int $version): void
     $hex = bin2hex($bytes);
     $path = rtrim($keysDir, '/\\') . '/' . keyFileBase($context) . '_v' . $version . '.hex';
     file_put_contents($path, $hex . PHP_EOL);
+    @chmod($path, 0600);
 }
 
 /**
@@ -210,6 +212,9 @@ try {
         usage();
     }
 
+    $generateKeys = optBool($options, 'generate-keys', false);
+    initRuntimeConfig($options, !$generateKeys);
+
     $root = optString($options, 'blackcat-db-root');
     $map = $root !== null
         ? PackagesEncryptionMapLoader::fromBlackcatDatabaseRoot($root)
@@ -238,32 +243,33 @@ try {
 
     $contexts = collectContexts($map);
 
-    $keysDir = optString($options, 'keys-dir') ?? optString($options, 'keys_dir');
-    if ($keysDir === null) {
-        $env = getenv('BLACKCAT_KEYS_DIR');
-        if (is_string($env) && trim($env) !== '') {
-            $keysDir = trim($env);
-        }
-    }
-
     $generatedKeys = false;
-    if ($keysDir === null || optBool($options, 'generate-keys', false)) {
+    if ($generateKeys) {
         $keysDir = sys_get_temp_dir() . '/bcat-dbcrypto-health-keys-' . bin2hex(random_bytes(5));
-        if (!is_dir($keysDir) && !mkdir($keysDir, 0770, true) && !is_dir($keysDir)) {
+        if (!is_dir($keysDir) && !mkdir($keysDir, 0700, true) && !is_dir($keysDir)) {
             throw new RuntimeException('Cannot create temp keys dir: ' . $keysDir);
         }
+        @chmod($keysDir, 0700);
         $generatedKeys = true;
         generateKeys($keysDir, $contexts['all'], 2);
+    } else {
+        $keysDir = resolveKeysDir($options);
+        if ($keysDir === null) {
+            throw new RuntimeException('Missing crypto keys dir (set runtime config crypto.keys_dir or pass --keys-dir=DIR, or use --generate-keys=1).');
+        }
     }
 
     if (!is_dir($keysDir)) {
         throw new RuntimeException('Keys dir not found: ' . $keysDir);
     }
 
-    $crypto = CryptoManager::boot(CryptoConfig::fromEnv([
-        'BLACKCAT_KEYS_DIR' => $keysDir,
+    $env = [
         'BLACKCAT_KMS_ENDPOINTS' => '[]',
-    ]));
+    ];
+    if (!RuntimeConfig::isInitialized()) {
+        $env['BLACKCAT_KEYS_DIR'] = $keysDir;
+    }
+    $crypto = CryptoManager::boot(CryptoConfig::fromEnv($env));
 
     $maxContexts = max(0, optInt($options, 'max-contexts', 25));
     $checkAll = optBool($options, 'check-all', false);
@@ -421,6 +427,54 @@ try {
     exit(1);
 }
 
+/**
+ * Initialize blackcat-config runtime config for CLI tools.
+ *
+ * @param array<string,string> $options
+ */
+function initRuntimeConfig(array $options, bool $auto = true): void
+{
+    $cfg = $options['config'] ?? ($options['config-file'] ?? null);
+    if ($cfg === '1') {
+        $cfg = '';
+    }
+
+    if (!$auto) {
+        if (is_string($cfg) && trim($cfg) !== '') {
+            throw new RuntimeException('--generate-keys is incompatible with --config/--config-file.');
+        }
+        return;
+    }
+
+    if (is_string($cfg) && trim($cfg) !== '') {
+        RuntimeConfig::initFromJsonFileIfNeeded(trim($cfg));
+        return;
+    }
+
+    if ($auto) {
+        RuntimeConfig::tryInitFromFirstAvailableJsonFile();
+    }
+}
+
+/**
+ * Resolve keys dir from runtime config (preferred) or CLI flags.
+ *
+ * @param array<string,string> $options
+ */
+function resolveKeysDir(array $options): ?string
+{
+    if (RuntimeConfig::isInitialized()) {
+        $v = RuntimeConfig::get('crypto.keys_dir');
+        if (is_string($v) && trim($v) !== '') {
+            return trim($v);
+        }
+        return null;
+    }
+
+    $opt = optString($options, 'keys-dir') ?? optString($options, 'keys_dir');
+    return $opt !== null && $opt !== '' ? $opt : null;
+}
+
 function requireAutoloader(): void
 {
     $candidates = [
@@ -439,6 +493,7 @@ function requireAutoloader(): void
             registerPsr4('BlackCat\\Database\\', __DIR__ . '/../../blackcat-database/src');
             registerPsr4('BlackCat\\Database\\', __DIR__ . '/../blackcat-database/src');
             registerPsr4('BlackCat\\Crypto\\', __DIR__ . '/../../blackcat-crypto/src');
+            registerPsr4('BlackCat\\Config\\', __DIR__ . '/../../blackcat-config/src');
             registerPsr4('BlackCat\\Core\\', __DIR__ . '/../../blackcat-core/src');
             return;
         }
@@ -465,4 +520,3 @@ function registerPsr4(string $prefix, string $dir): void
         }
     }, true, true);
 }
-
