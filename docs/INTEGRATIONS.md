@@ -1,31 +1,33 @@
-# Integrace do ostatních repozitářů (zero‑boilerplate)
+# Integrations into other repositories (zero boilerplate)
 
-Tento balíček je „bridge“ mezi:
+For the Czech version, see `INTEGRATIONS.cs.md`.
 
-- `blackcat-crypto` (manifest + `CryptoManager`) – čistá crypto logika,
-- `blackcat-database` (repos/services/installer) – čistá DB logika,
-- `blackcat-database-crypto` – **transparentní write‑path šifrování/HMAC** pro citlivá data v DB.
+This package is a bridge between:
 
-Cíl: v aplikačních repozitářích (např. `blackcat-auth`) řešit pouze business logiku. DB připojení, upserty a šifrování jsou centralizované.
+- `blackcat-crypto` (manifest + `CryptoManager`) — pure crypto logic,
+- `blackcat-database` (repos/services/installer) — pure DB logic,
+- `blackcat-database-crypto` — **transparent write-path encryption/HMAC** for sensitive DB data.
 
-## 1) Minimální konfigurace (env)
+Goal: application repositories (e.g. `blackcat-auth`) should focus on business logic. DB connectivity, upserts, and crypto transforms are centralized.
 
-Ingress adapter (`BlackCat\Database\Crypto\IngressLocator`) se umí nabootovat automaticky, pokud existují packages mapy + klíče:
+## 1) Minimal configuration (env)
 
-- (povinné) `blackcat-database/packages/*/schema/encryption-map.json` (1 soubor = 1 tabulka; pokrývá všechny sloupce z `Definitions::columns()`)
+The ingress adapter (`BlackCat\Database\Crypto\IngressLocator`) can boot automatically if packages maps + keys are available:
+
+- (required) `blackcat-database/packages/*/schema/encryption-map.json` (1 file = 1 table; covers all columns from `Definitions::columns()`)
 - `BLACKCAT_KEYS_DIR=./keys` (standard: `*_vN.key`)
-- (doporučeno) `BLACKCAT_CRYPTO_MANIFEST=/path/to/contexts/core.json`
-- `DB_DSN=...` (a volitelně `DB_USER`, `DB_PASSWORD`) – pro `BlackCat\Core\Database`
+- (recommended) `BLACKCAT_CRYPTO_MANIFEST=/path/to/contexts/core.json`
+- `DB_DSN=...` (optionally `DB_USER`, `DB_PASSWORD`) — for `BlackCat\Core\Database`
 
-Pozn.: Snapshot/gate nástroje defaultně používají `blackcat-database` packages jako single source of truth (Definitions), takže nemusíš duplikovat schémata.
+Note: snapshot/gate tools use `blackcat-database` packages as the single source of truth (Definitions), so you do not have to duplicate schemas.
 
-Pozn.: zdroj mapy je záměrně **packages-only** (nejde přesměrovat přes env/map soubor), aby byl zdroj pravdy jednoznačný a bezpečný.
-Fail‑closed je default: pokud ingress nejde nabootovat (mapa/klíče/manifest), aplikace spadne hned.
-Pokud je `blackcat-database` nainstalované jako git repo se submoduly, je potřeba mít `packages/*` checkoutnuté (init/update submodulů).
+Note: the map source is intentionally **packages-only** (cannot be redirected via env/map file), so the source of truth stays unambiguous and safe.
+Fail-closed is the default: if ingress cannot boot (map/keys/manifest), the application fails immediately.
+If `blackcat-database` is installed as a git repo with submodules, `packages/*` must be checked out (init/update submodules).
 
-### Doporučený bootstrap (1 řádek)
+### Recommended bootstrap (one line)
 
-V aplikačních repozitářích je ideální použít `blackcat-crypto` bootstrap, který rovnou nakonfiguruje i DB ingress locator:
+In application repositories, prefer the `blackcat-crypto` bootstrap which also configures the DB ingress locator:
 
 ```php
 use BlackCat\Crypto\Bootstrap\PlatformBootstrap;
@@ -33,10 +35,10 @@ use BlackCat\Crypto\Bootstrap\PlatformBootstrap;
 PlatformBootstrap::boot(); // CryptoManager + Core bridge + DB ingress
 ```
 
-### Modulární mapy (includes)
+### Modular maps (`includes`)
 
-Šifrovací mapa může být složená z více souborů přes `includes` (užitečné pro tooling/transform-only použití mimo `IngressLocator`).
-Pozn.: runtime ingress v `blackcat-database` používá packages-only mapy.
+An encryption map can be composed from multiple files via `includes` (useful for tooling/transform-only usage outside `IngressLocator`).
+Note: the runtime ingress in `blackcat-database` uses packages-only maps.
 
 ```json
 {
@@ -54,13 +56,13 @@ Pozn.: runtime ingress v `blackcat-database` používá packages-only mapy.
 }
 ```
 
-Pravidlo mergování: includes se načtou první (v pořadí) a aktuální soubor je přepíše (shallow merge per column spec).
+Merge rule: includes are loaded first (in order) and the current file overrides them (shallow merge per column spec).
 
-## 2) Write‑path bez boilerplate (doporučeno)
+## 2) Boilerplate-free write path (recommended)
 
-### Varianta A: přes `GenericCrudService` (auto‑attach ingress)
+### Option A: via `GenericCrudService` (auto-attach ingress)
 
-`blackcat-database` služby při konstrukci automaticky zavolají `IngressLocator::adapter()` a připojí ingress do repository – takže write‑path (`create/update/upsert`) šifruje bez dalšího kódu.
+`blackcat-database` services call `IngressLocator::adapter()` during construction and attach ingress to the repository, so the write path (`create/update/upsert`) encrypts without extra code.
 
 ```php
 use BlackCat\Core\Database;
@@ -71,16 +73,16 @@ $db = Database::getInstance();
 $repo = new UserRepository($db);
 $svc  = new GenericCrudService($db, $repo, 'id');
 
-// Vstup je plaintext → před zápisem se transformuje podle mapy (encrypt/hmac/meta).
+// Input is plaintext → transformed before write according to the map (encrypt/hmac/meta).
 $svc->create([
     'id' => 1,
     'email_hash' => 'alice@example.com',
 ]);
 ```
 
-### Varianta B: přímé repo (volitelné attach)
+### Option B: direct repository (optional attach)
 
-Pokud používáš repo přímo, můžeš ingress nastavit explicitně (např. pro starší verze `blackcat-database` nebo pokud chceš přepsat tabulku):
+If you use the repository directly, you can attach ingress explicitly (e.g. for older `blackcat-database` versions or if you need to override the table name):
 
 ```php
 use BlackCat\Core\Database;
@@ -98,11 +100,11 @@ $repo->insert([
 ]);
 ```
 
-## 3) Deterministic lookup (login, search) – `criteria()`
+## 3) Deterministic lookup (login, search) — `criteria()`
 
-Pro lookupy typu „najdi uživatele podle e‑mailu“ ukládej deterministické pole jako `hmac` (např. `users.email_hash`).
+For lookups like “find user by email”, store a deterministic field as `hmac` (e.g. `users.email_hash`).
 
-Pak v aplikaci nikdy nepočítáš HMAC ručně – použiješ ingress:
+Then you never compute HMAC manually in the application — you use ingress:
 
 ```php
 use BlackCat\Database\Crypto\IngressLocator;
@@ -113,28 +115,28 @@ $crit = $ingress->criteria('users', ['email_hash' => $email]); // HMAC-only
 // … repo query / exists / upsertByKeys s $crit …
 ```
 
-`criteria()` odmítne `encrypt` (nedeterministické), aby nedošlo k falešným dotazům.
+`criteria()` rejects `encrypt` (non-deterministic) to avoid false queries.
 
-Pozn.: V novějších generated repos z `blackcat-database` se `getByUnique()` snaží zavolat `ingressCriteriaTransform()` automaticky, takže lookup podle `hmac` sloupců může fungovat i bez ručního volání `criteria()`.
+Note: in newer generated repositories from `blackcat-database`, `getByUnique()` tries to call `ingressCriteriaTransform()` automatically, so lookups by `hmac` columns can work without calling `criteria()` manually.
 
-## 4) Praktický příklad: `blackcat-auth` (doporučený směr)
+## 4) Practical example: `blackcat-auth` (recommended direction)
 
-`blackcat-auth` už dnes umí používat `blackcat-database` schéma (`users` tabulka). Další krok je:
+`blackcat-auth` can already use the `blackcat-database` schema (`users` table). Next steps:
 
-1) Nastavit šifrovací mapu pro `users` citlivá pole (min. deterministické `email_hash`) v `blackcat-database/packages/users/schema/encryption-map.json`.
-2) V login flow používat `IngressLocator::adapter()->criteria('users', …)` pro lookup.
-3) Ve write‑path (seed uživatelů, registrace, změna e‑mailu) zapisovat plaintext – repo/service to samo zašifruje/HMAC.
+1) Define an encryption map for sensitive `users` fields (at minimum deterministic `email_hash`) in `blackcat-database/packages/users/schema/encryption-map.json`.
+2) In the login flow, use `IngressLocator::adapter()->criteria('users', …)` for lookups.
+3) In the write path (seeding users, registration, email change), write plaintext — the repo/service will encrypt/HMAC it.
 
-### 4.1 Email verifikace přes DB queue (`blackcat-auth` + `blackcat-mailing`)
+### 4.1 Email verification via DB queue (`blackcat-auth` + `blackcat-mailing`)
 
-Auth modul při registraci (nebo resend) **nevytváří SMTP spojení** – pouze vloží notifikaci do DB tabulky `notifications`.
-Odeslání řeší samostatný worker z `blackcat-mailing` (`bin/mailing-worker`), který čte claimable řádky přes view `vw_notifications_due`.
+During registration (or resend), the auth module **does not create an SMTP connection** — it only inserts a notification into the DB table `notifications`.
+Sending is handled by a separate worker from `blackcat-mailing` (`bin/mailing-worker`), which reads claimable rows via the view `vw_notifications_due`.
 
-Díky ingress vrstvě:
-- `notifications.payload` může být uložen jako ciphertext envelope (AEAD) – aplikace zapisuje plaintext JSON,
-- lookupy pro rate-limit tabulky (`login_attempts`, `register_events`) používají deterministické HMAC (bez plaintext IP/username v DB).
+Thanks to the ingress layer:
+- `notifications.payload` can be stored as a ciphertext envelope (AEAD) — the app writes plaintext JSON,
+- lookups for rate-limit tables (`login_attempts`, `register_events`) use deterministic HMAC (no plaintext IP/username in DB).
 
-### Příklad mapy (výřez)
+### Example map (excerpt)
 
 ```json
 {
@@ -168,14 +170,14 @@ Díky ingress vrstvě:
 }
 ```
 
-## 5) Operace: views/joins pro crypto (single source of truth)
+## 5) Operations: crypto views/joins (single source of truth)
 
-Join/ops views pro crypto/KMS/encryption governance jsou deklarativně ve `blackcat-database/views-library/crypto/joins-*.yaml`
-a instalují se přes `blackcat-database` (040_views_joins.* scripts). Nejde o další zdroj pravdy – je to **operational layer**
-nad tabulkami z `blackcat-database` schémat.
+Join/ops views for crypto/KMS/encryption governance are declarative in `blackcat-database/views-library/crypto/joins-*.yaml`
+and are installed via `blackcat-database` (040_views_joins.* scripts). This is not another source of truth — it is an **operational layer**
+on top of the tables defined by `blackcat-database` schemas.
 
-## TODO (další integrace)
+## TODO (more integrations)
 
-- `blackcat-sessions`: deterministické HMAC pro lookup tokenů + šifrování session payloadu (`encrypt`).
-- `blackcat-identity`: šifrování PII blobů + governance napojení (`encrypted_fields_without_binding`).
-- `blackcat-messaging`: šifrované message payloady + tokenizace pro search (budoucí Stage 4).
+- `blackcat-sessions`: deterministic HMAC for token lookups + session payload encryption (`encrypt`).
+- `blackcat-identity`: encrypt PII blobs + governance integration (`encrypted_fields_without_binding`).
+- `blackcat-messaging`: encrypted message payloads + search tokenization (future Stage 4).

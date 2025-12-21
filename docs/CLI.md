@@ -1,12 +1,14 @@
 # CLI Overview
 
+For the Czech version, see `CLI.cs.md`.
+
 | Command | Description |
 | --- | --- |
-| `bin/db-crypto-plan` | Validuje packages mapu (`blackcat-database/packages/*/schema/encryption-map.json`) a volitelně proti schématu (`--schema=path.json`, `--schema-source=packages` nebo `--dsn=...`). Volitelně `--tables=a,b` pro validaci subsetu. `--map=FILE` je určené jen pro tooling/debug. Exit code `2` značí varování. |
-| `bin/db-crypto-schema` | Vytvoří snapshot ve formátu [docs/SCHEMA.md](./SCHEMA.md). Defaultně čte schema z `blackcat-database` packages (single source of truth), volitelně z live DB (`--source=db --dsn=...`). |
-| `bin/db-crypto-keys-sync` | Sync `*_vN.key` soubory do tabulky `crypto_keys` (audit/inventář, příprava na rotace). |
-| `bin/db-crypto-telemetry` | Vygeneruje JSON metriky z packages mapy (CI artefakt, rychlá kontrola coverage/strategií/encoding). |
-| `bin/db-crypto-stress` | Transform-only stress/smoke nad packages mapou (bez DB). Dělá encrypt+decrypt, decrypt fallback (rotace) a HMAC verify. Pokud `BLACKCAT_KEYS_DIR` není nastaven, vygeneruje dočasné per-context klíče. |
-| `bin/db-crypto-health` | Monitoring-friendly health report (JSON). Ověří mapu, (volitelně) dostupnost klíčů pro všechny kontexty, a udělá sample roundtrip encrypt/decrypt + fallback + HMAC verify. |
+| `bin/db-crypto-plan` | Validates the packages map (`blackcat-database/packages/*/schema/encryption-map.json`) and optionally validates it against schema (`--schema=path.json`, `--schema-source=packages` or `--dsn=...`). Use `--tables=a,b` to validate a subset. `--map=FILE` is intended only for tooling/debug. Exit code `2` indicates warnings. |
+| `bin/db-crypto-schema` | Produces a schema snapshot in the format described in [SCHEMA.md](./SCHEMA.md). By default reads schema from `blackcat-database` packages (single source of truth); optionally from a live DB (`--source=db --dsn=...`). |
+| `bin/db-crypto-keys-sync` | Syncs local `*_vN.key` files into the `crypto_keys` table (inventory/audit; baseline for rotations). |
+| `bin/db-crypto-telemetry` | Generates JSON metrics from the packages map (CI artifact; quick coverage/strategy/encoding checks). |
+| `bin/db-crypto-stress` | Transform-only stress/smoke using the packages map (no DB). Runs encrypt+decrypt, rotation fallback decrypt, and HMAC verification. If `BLACKCAT_KEYS_DIR` is missing, generates temporary per-context keys. |
+| `bin/db-crypto-health` | Monitoring-friendly health report (JSON). Validates the map, optionally checks key availability for all contexts, and performs a sample encrypt/decrypt roundtrip + fallback + HMAC verify. |
 
-Pozn.: `--blackcat-db-root=DIR` vynutí, odkud se mají načíst packages (užitečné v CI/multi-checkout). `EncryptionMap::fromFile()` podporuje `includes` (tooling/testy).
+Note: `--blackcat-db-root=DIR` forces where packages are loaded from (useful in CI/multi-checkout). `EncryptionMap::fromFile()` supports `includes` (tooling/tests).

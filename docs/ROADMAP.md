@@ -1,133 +1,135 @@
 # blackcat-database-crypto – Roadmap
 
+For the Czech version, see `ROADMAP.cs.md`.
+
 ## Stage 1 – Adaptive Encryptor ✅
-- [x] Konfigurovatelná mapa tabulek/sloupců (JSON nebo PHP array; YAML případně později).
-- [x] `DatabaseCryptoAdapter` (encrypt + HMAC) delegující na libovolný gateway.
-- [x] Legacy `PdoGateway` (nyní `@deprecated`) + unit testy pro `PayloadEncryptor` (pouze jako reference mimo ekosystém).
-- [x] Manifest napojení (`BLACKCAT_CRYPTO_MANIFEST`) → shoda se zbytkem platformy.
-- [x] Integrační test: `blackcat-database` `IngressLocator` boot + `encrypt()` (crypto ↔ database).
+- [x] Configurable table/column map (JSON or PHP array; YAML later).
+- [x] `DatabaseCryptoAdapter` (encrypt + HMAC) delegating to any gateway.
+- [x] Legacy `PdoGateway` (now `@deprecated`) + unit tests for `PayloadEncryptor` (reference only; not used in the ecosystem).
+- [x] Manifest integration (`BLACKCAT_CRYPTO_MANIFEST`) to match the rest of the platform.
+- [x] Integration test: `blackcat-database` `IngressLocator` boot + `encrypt()` (crypto ↔ database).
 - [x] Read-side helper: `PayloadDecryptor` + `DatabaseIngressAdapter::decrypt()`.
 
 ## Stage 2 – Schema-Aware Diagnostics (current)
-- `db-crypto-plan` validuje mapu oproti manifestu (`blackcat-crypto-manifests`) a umí validovat i proti schématu (snapshot `--schema`, nebo `--schema-source=packages` jako single source of truth; volitelně live DB přes `--dsn`).
-- `db-crypto-schema` generuje snapshoty primárně z `blackcat-database` packages (Definitions), volitelně z live DB (`--source=db --dsn=...`) pro kontrolu instalace.
-- `db-crypto-keys-sync` synchronizuje lokální `*_vN.key` soubory do DB tabulky `crypto_keys` (inventář/audit; baseline pro rotace).
-- ✅ `db-crypto-telemetry` generuje JSON metriky mapy (coverage/strategie/kontexty) jako CI artefakt.
+- `db-crypto-plan` validates the map against the manifest (`blackcat-crypto-manifests`) and can also validate against schema (snapshot `--schema`, or `--schema-source=packages` as single source of truth; optional live DB via `--dsn`).
+- `db-crypto-schema` generates snapshots primarily from `blackcat-database` packages (Definitions), optionally from a live DB (`--source=db --dsn=...`) to verify installation.
+- `db-crypto-keys-sync` syncs local `*_vN.key` files into the DB table `crypto_keys` (inventory/audit; baseline for rotations).
+- ✅ `db-crypto-telemetry` generates JSON map metrics (coverage/strategies/contexts) as a CI artifact.
 - ✅ CI gate: `phpstan` + `phpunit` + `db-crypto-plan` (schema-source=packages).
-- ✅ Gateway `CoreDatabaseGateway` nad `BlackCat\Core\Database` (bez raw PDO; quoting + SQL comment).
-- ✅ Volitelné write-path meta: `write_key_version` + `write_encryption_meta` (auto doplnění `*_key_version` a `encryption_meta`).
-- ✅ Integrační test (skippable): `DatabaseIngressAdapter` ↔ generated repo (Orders) upsertByKeys + upsertManyRevive end-to-end.
-- ✅ Integrace do ostatních repozitářů: `docs/INTEGRATIONS.md` (např. `blackcat-auth` – criteria + zero‑boilerplate write‑path).
-- ✅ Modularita mapy: `includes` (skládání více JSON map bez duplikace konfigurace).
-- Pozn.: join/ops views pro crypto/KMS jsou řešené v `blackcat-database/views-library/crypto/joins-*.yaml` (single source of truth pro operace nad DB tabulkami).
-- Linter pro PR (GitHub Action) – JSON schema + phpunit test pro mapu.
-- Možnost označit sloupce jako `deterministic` (AEAD vs HMAC) podle potřeby indexů.
+- ✅ Gateway `CoreDatabaseGateway` over `BlackCat\Core\Database` (no raw PDO; quoting + SQL comment).
+- ✅ Optional write-path metadata: `write_key_version` + `write_encryption_meta` (auto-fill `*_key_version` and `encryption_meta`).
+- ✅ Integration test (skippable): `DatabaseIngressAdapter` ↔ generated repo (Orders) upsertByKeys + upsertManyRevive end-to-end.
+- ✅ Integration notes for other repositories: `docs/INTEGRATIONS.md` (e.g. `blackcat-auth` — criteria + zero-boilerplate write path).
+- ✅ Map modularity: `includes` (compose multiple JSON maps without duplicating configuration).
+- Note: join/ops views for crypto/KMS are defined in `blackcat-database/views-library/crypto/joins-*.yaml` (single source of truth for operational queries across DB tables).
+- PR linter (GitHub Action) — JSON schema + phpunit test for the map.
+- Option to mark columns as `deterministic` (AEAD vs HMAC) depending on index needs.
 
 ## Stage 3 – Transparent Query Hooks
-- Deterministic query helper: `DatabaseIngressAdapter::criteria()` (HMAC-only) + `DatabaseIngressCriteriaAdapterInterface`; `GenericCrudService::upsertByKeys()`/`existsByKeys()` a generated repo `getByUnique()` transformují lookup klíče před dotazem.
-- Middleware pro `blackcat-database` repositories (automatické zapojení do `BulkUpsertRepository`, `ContractRepository`).
-- Eventy `beforeInsert`/`beforeUpdate` obohacené o `encryption_context` pro observabilitu.
-- ✅ Podpora `decrypt()` helperů (např. pro audit logy, download endpoints).
+- Deterministic query helper: `DatabaseIngressAdapter::criteria()` (HMAC-only) + `DatabaseIngressCriteriaAdapterInterface`; `GenericCrudService::upsertByKeys()`/`existsByKeys()` and generated repo `getByUnique()` transform lookup keys before the query.
+- Middleware for `blackcat-database` repositories (auto-wiring into `BulkUpsertRepository`, `ContractRepository`).
+- `beforeInsert`/`beforeUpdate` events enriched with `encryption_context` for observability.
+- ✅ Support `decrypt()` helpers (e.g. for audit logs, download endpoints).
 
 ## Stage 4 – Tokenization & Search
-- Deterministické tokeny pro LIKE/ILIKE vyhledávání (kombinace HMAC + prefix tables).
-- Bloom filter indexy pro anonymní vyhledávání.
-- Pre/post hooks pro `blackcat-search` modul (automatické odmaskování při indexaci).
+- Deterministic tokens for LIKE/ILIKE search (HMAC + prefix tables).
+- Bloom filter indexes for anonymous searching.
+- Pre/post hooks for the `blackcat-search` module (automatic unmasking during indexing).
 
 ## Stage 5 – Runtime Governance
-- Telemetrie (Prometheus) – počty zašifrovaných polí, chyby, vynechané mapy.
-- Policy enforcement (napojení na `blackcat-governance`): „co se musí šifrovat“ vs. realita.
-- CLI `db-crypto:enforce` – reencrypt existující data podle nové politiky (spolupráce s `vault:migrate`).
+- Telemetry (Prometheus) — counts of encrypted fields, errors, missing maps.
+- Policy enforcement (integration with `blackcat-governance`): “what must be encrypted” vs. reality.
+- CLI `db-crypto:enforce` — re-encrypt existing data according to a new policy (works with `vault:migrate`).
 
 ## Stage 6 – Multi-language SDK
-- TypeScript + Go light-weight klienti sdílející stejnou mapu (`blackcat-crypto-manifests`).
-- Declarativní kódgen (json-schema -> PHP trait pro repositories, TS decorators, etc.).
+- TypeScript + Go lightweight clients sharing the same map (`blackcat-crypto-manifests`).
+- Declarative codegen (json-schema -> PHP trait for repositories, TS decorators, etc.).
 
 ## Stage 7 – Secret-Aware Backups
-- Adapter pro `blackcat-backup` – exportuje envelopes + manifest metainformace.
-- Automatic wrap queue scheduling při obnově backupu (zajistí rewrap u odhalených klíčů).
+- Adapter for `blackcat-backup` — exports envelopes + manifest metadata.
+- Automatic wrap queue scheduling during restore (ensures rewrap for exposed keys).
 
 ## Stage 8 – Zero Trust DB Mesh
-- Federované DB nody sdílející pouze encrypted payloady + policy handshake.
-- Dynamic context negotiation (per tenant) – auto mapy podle `tenant.region` / `compliance profile`.
-- Self-service CLI/portal pro security tým (audit, revoke, rewrap, compliance reporty).
+- Federated DB nodes sharing only encrypted payloads + policy handshake.
+- Dynamic context negotiation (per tenant) — auto maps based on `tenant.region` / `compliance profile`.
+- Self-service CLI/portal for security teams (audit, revoke, rewrap, compliance reports).
 
 ## Stage 9 – Autonomous Observability
-- Streaming audit feed do `blackcat-observability` (detekce ne-/zašifrovaných zápisů v reálném čase).
-- Prometheus dashboard „encryption coverage“ + vzorkování plaintextů (bez hodnot, pouze meta).
-- Hook do `blackcat-feedback` pro dev UX telemetry (kolik času ušetří automatické šifrování).
+- Streaming audit feed into `blackcat-observability` (real-time detection of encrypted/non-encrypted writes).
+- Prometheus dashboard “encryption coverage” + plaintext sampling (no values, metadata only).
+- Hook into `blackcat-feedback` for developer UX telemetry (how much time transparent crypto saves).
 
 ## Stage 10 – Intelligent Deidentification
-- Strojové učení nad mapou (auto doporučení kontextů na základě datového profilu).
-- Integrace s `blackcat-ai` pro generování anonymizovaných datasetů bez manuální konfigurace.
-- „What-if“ simulátor – CLI `db-crypto:simulate anonymization` (počítá dopad na dotazy/indexy).
+- ML over the map (auto-recommend contexts based on data profiles).
+- Integration with `blackcat-ai` to generate anonymized datasets without manual configuration.
+- “What-if” simulator — CLI `db-crypto:simulate anonymization` (estimates impact on queries/indexes).
 
 ## Stage 11 – Runtime Policy Orchestrator
-- Napojení na `blackcat-orchestrator` – při změně politiky se vyžádá rewrap/rehash, spustí se pipeline do `blackcat-crypto`.
-- Webhooky do `blackcat-governance` pro approvals (např. povolení dočasného plaintext přístupu).
-- Drift detection: porovná skutečnou DB (pg_dump) vs. mapu → auto ticket v `blackcat-support`.
+- Integration with `blackcat-orchestrator` — policy changes request rewrap/rehash and trigger a pipeline into `blackcat-crypto`.
+- Webhooks into `blackcat-governance` for approvals (e.g. temporary plaintext access).
+- Drift detection: compare actual DB (pg_dump) vs. the map → auto ticket in `blackcat-support`.
 
 ## Stage 12 – Developer Delight / SDK Everywhere
-- Jednotné SDK moduly (PHP, TS, Go, Rust) s generovanými typy + IDE helpers.
-- VS Code / PHPStorm plugin: zvýrazní místa, kde chybí šifrovací strategie.
-- `db-crypto playground` (web app) – prototypování mapy na sample datech, generování migration skriptů.
+- Unified SDK modules (PHP, TS, Go, Rust) with generated types + IDE helpers.
+- VS Code / PHPStorm plugin: highlights missing encryption strategies.
+- `db-crypto playground` (web app) — prototype maps on sample data, generate migration scripts.
 
 ## Stage 13 – MPC & Threshold Enforcement (planned)
-- Možnost přepnout mapu na threshold/MPC režim pro nejcitlivější sloupce (FROST/BLS podpisy pro audit).
-- Recovery runbooky: air-gapped rewrap, split-key approvals (security + governance + ops).
-- Validace konfigurace v CI s důrazem na „no-plaintext“ režim a zákazické BYOK scénáře.
+- Option to switch the map to threshold/MPC mode for the most sensitive columns (FROST/BLS signatures for audit).
+- Recovery runbooks: air-gapped rewrap, split-key approvals (security + governance + ops).
+- CI config validation with emphasis on “no-plaintext” mode and strict BYOK scenarios.
 
 ## Stage 14 – Autonomous Compliance Mesh (exploratory)
-- Auto-remediace driftu: watchdog porovná produkční DB se schválenou mapou, otevře ticket a spustí rewrap/anonymizaci.
-- Continuous red-team simulace: syntetické útoky na tokeny/indexy, hodnocení odolnosti mapy.
-- Multi-cloud handshake: konzistentní mapy pro regionální HA (PG/MySQL/MariaDB) + export do `blackcat-governance` a `blackcat-observability`.
+- Auto-remediation of drift: watchdog compares production DB to the approved map, opens a ticket, and triggers rewrap/anonymization.
+- Continuous red-team simulations: synthetic attacks on tokens/indexes; scoring map resilience.
+- Multi-cloud handshake: consistent maps for regional HA (PG/MySQL/MariaDB) + export into `blackcat-governance` and `blackcat-observability`.
 
 ## Stage 15 – Confidential Compute & Edge (planned)
-- Integrace s TEE/HSM na okraji (edge nodes) – lokální šifrování bez úniku klíčů do cloudu, s atestačními tokeny.
-- Regionální „split maps“ pro data residency: automaticky generované mapy podle tenant/region a compliance profilu.
-- BYOK/BYO-KMS workflow pro zákazníky: registrace jejich klíčů/kms endpointů + validace politik v CI/CD.
+- Integration with TEE/HSM at the edge (edge nodes) — local encryption without leaking keys to the cloud, with attestation tokens.
+- Regional “split maps” for data residency: auto-generated maps based on tenant/region and compliance profile.
+- BYOK/BYO-KMS workflow for customers: register their keys/KMS endpoints + validate policies in CI/CD.
 
 ## Stage 16 – Autonomous Residency & Recovery (exploratory)
-- Multi-region failover s automatickým přepočtem map (rezidency-first) a MPC recovery scénáři pro kritické sloupce.
-- Notarizované audit artefakty: Merkle log o šifrovacích operacích + push do SIEM / datagovernance.
-- Self-healing režim: při detekci driftu spouští rewrap/reindex/token refresh a odkládá riskované dotazy (circuit breaker).
+- Multi-region failover with automatic map recomputation (residency-first) and MPC recovery scenarios for critical columns.
+- Notarized audit artifacts: Merkle log of crypto operations + push to SIEM/data governance.
+- Self-healing mode: on drift detection triggers rewrap/reindex/token refresh and defers risky queries (circuit breaker).
 
 ## Stage 17 – Privacy-Preserving Query Plane (future)
-- Omezování plaintextu: deterministické tokeny + HE/TEE pro agregace bez dešifrování, předpřipravené pipeline do analytics.
-- Policy-gated query execution: runtime check „kdo může co dešifrovat“ + audit trail per query.
-- Anomální detekce na tokenech (frekvence/entropy) → auto-limity a rewrap na rizikových sloupcích.
+- Plaintext minimization: deterministic tokens + HE/TEE for aggregates without decryption; prebuilt pipelines into analytics.
+- Policy-gated query execution: runtime check “who can decrypt what” + per-query audit trail.
+- Anomaly detection on tokens (frequency/entropy) → auto-limits and rewrap on risky columns.
 
 ## Stage 18 – Compliance Kits & Blueprints (future)
-- Předpřipravené šablony pro PCI/HIPAA/NIS2: mapy, politiky, CI lint, runbooky.
-- Auto-generované compliance reporty (rotace, coverage, drift) + exporty pro audity.
-- Sandboxed „what-if“ simulátor: dopad politik na dotazy/indexy a provozní cost (pro bezpečnost i produkt).
+- Prebuilt kits for PCI/HIPAA/NIS2: maps, policies, CI lint, runbooks.
+- Auto-generated compliance reports (rotation, coverage, drift) + exports for audits.
+- Sandboxed “what-if” simulator: impact of policies on queries/indexes and operational cost (security + product).
 
 ## Stage 19 – Federated Clean Rooms & Synthetic Data (future)
-- Integrace s privacy clean-room workflow: tokeny/envelopes kompatibilní s federovanými výpočty bez plaintextu.
-- Synthetic data pipeline: generuje anonymizované datasety řízené mapou/politikou, s exporty pro vývoj/test/AI.
-- SLA-aware governance: automatické rewrap/retoken při porušení limitů (čas, počet přístupů, partner trust).
+- Integration with privacy clean-room workflows: tokens/envelopes compatible with federated computation without plaintext.
+- Synthetic data pipeline: generates anonymized datasets driven by the map/policy, with exports for dev/test/AI.
+- SLA-aware governance: automatic rewrap/retoken on limit breaches (time, number of accesses, partner trust).
 
 ## Stage 20 – Certifiable PQ & Disaster Readiness (future)
-- PQ readiness kit: důkazy o rotacích, attestace TEE/HSM, simulace výpadků a automatické runbooky pro multi-cloud HA.
-- Regionally-aware DR: mapy a tokeny přepočítané při failoveru, s Merkle auditem pro regulátory.
-- Adaptive execution: volí strategii (deterministic tokeny vs TEE/HE) podle SLA, latency a compliance profilu.
+- PQ readiness kit: rotation proofs, TEE/HSM attestations, outage simulations, and automatic runbooks for multi-cloud HA.
+- Region-aware DR: maps and tokens recomputed during failover, with Merkle audit for regulators.
+- Adaptive execution: chooses strategy (deterministic tokens vs TEE/HE) based on SLA, latency, and compliance profile.
 
 ## Stage 21 – ZK Enforcement & Least-Privilege Decryption (future)
-- ZK ověření, že decrypt/search probíhá jen pro povolené role/politiky bez odhalení obsahu.
-- Lease-based decryption: krátké „decrypt leases“ s auditními důkazy; automatické revokace a rewrap při anomáliích.
-- Query intent signing: každá citlivá query podepsaná policy tokenem, ověřená před exekucí.
+- ZK verification that decrypt/search runs only for allowed roles/policies without revealing content.
+- Lease-based decryption: short “decrypt leases” with audit proofs; automatic revocations and rewrap on anomalies.
+- Query intent signing: every sensitive query signed by a policy token and verified before execution.
 
 ## Stage 22 – Resilience & Benchmark Suite (future)
-- Standardizované testy: drift, latency, failover, token collision, search leakage – publikovaný scorecard.
-- Chaos/DR scénáře pro mapy: automatické doporučení index/token strategií pro výkon i bezpečnost.
-- Governance export: risk score a posture reporty pro SRE/Compliance, navázané na rotace a audit logy.
+- Standardized tests: drift, latency, failover, token collision, search leakage — published scorecard.
+- Chaos/DR scenarios for maps: automatic recommendations for index/token strategies for performance and security.
+- Governance export: risk score and posture reports for SRE/Compliance, tied to rotations and audit logs.
 
 ## Stage 23 – Policy-as-Code & Shadow Plans (future)
-- Policy-as-code pro mapy: verifikovatelné balíčky (OPA/rego) s CI simulací dopadu na výkon, náklady a bezpečnost.
-- „Shadow map“ režim: testuje nové tokenizační/šifrovací strategie paralelně a publikuje srovnávací metriky.
-- Explainable planner: proč byla zvolená konkrétní strategie (deterministic vs TEE/HE), s odhadem rizika/cost.
+- Policy-as-code for maps: verifiable bundles (OPA/rego) with CI simulation of performance/cost/security impact.
+- “Shadow map” mode: tests new tokenization/encryption strategies in parallel and publishes comparative metrics.
+- Explainable planner: why a given strategy was chosen (deterministic vs TEE/HE), with risk/cost estimates.
 
 ## Stage 24 – AI-Augmented Governance (future)
-- AI doporučení pro mapy: návrhy contextů/tokenizačních strategií podle datových profilů a incidentů.
-- Predictive scaling a rewrap plánování na základě telemetry (load, drift, compliance events).
-- Auto-runbooky a PRs do map/politik, včetně simulace dopadu a rollback scénářů.
+- AI recommendations for maps: propose contexts/tokenization strategies based on data profiles and incidents.
+- Predictive scaling and rewrap planning based on telemetry (load, drift, compliance events).
+- Auto-runbooks and PRs for maps/policies, including impact simulation and rollback scenarios.

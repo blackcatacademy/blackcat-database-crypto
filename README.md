@@ -1,55 +1,59 @@
 # BlackCat Database Crypto Adapter
 
-Automatický šifrovací/obfuskační adapter pro `blackcat-database`. Cílem je, aby aplikační kód pouze předal vstupní payload a adapter sám:
+Automatic encryption/obfuscation adapter for `blackcat-database`.
 
-1. Podle packages encryption mapy (`blackcat-database/packages/*/schema/encryption-map.json`) najde sloupce vyžadující `encrypt` / `hmac`.
-2. Využije `blackcat-crypto` (`CryptoManager` + manifest slots) pro výběr správného klíče a vytvoření envelope nebo HMAC.
-3. Deleguje výsledek na původní `blackcat-database` write‑path (repository / service / CLI akce).
+Application code provides plaintext payloads and the adapter:
 
-Tím pádem se „vstup → šifrování → databáze“ zkrátí na jediný krok.
+1. Reads per-package encryption maps (`blackcat-database/packages/*/schema/encryption-map.json`) and finds columns that require `encrypt` / `hmac`.
+2. Uses `blackcat-crypto` (`CryptoManager` + manifest slots) to select the correct key and produce an envelope or HMAC.
+3. Delegates the transformed payload back to the normal `blackcat-database` write path (repository / service / CLI).
 
-## Rychlý start
+That way, “input → encryption → database” becomes a single step.
+
+For Czech docs, see `README.cs.md`.
+
+## Quick start
 
 ```bash
 composer install
 
-# pokud Composer hlásí "Could not authenticate against github.com":
+# if Composer says "Could not authenticate against github.com":
 # composer config -g github-oauth.github.com "$GITHUB_TOKEN"
 
 export BLACKCAT_CRYPTO_MANIFEST=../blackcat-crypto-manifests/contexts/core.json
 export BLACKCAT_KEYS_DIR=./tests/fixtures/keys
-php example.php   # lokální demo (encrypt + criteria)
+php example.php   # local demo (encrypt + criteria)
 
-# validace packages mapy oproti generated schématu (Definitions)
+# validate packages map against generated schema (Definitions)
 php bin/db-crypto-plan --schema-source=packages
 
-# validace proti živé DB (doporučeno omezit přes --tables=... na nainstalované moduly)
+# validate against a live DB (recommended: limit to installed modules via --tables=...)
 DB_USER=root DB_PASSWORD=secret php bin/db-crypto-plan --dsn=\"mysql:host=127.0.0.1;dbname=blackcat\" --tables=orders,idempotency_keys
 
-# telemetrie mapy + smoke stress (transform-only; bez DB)
+# map telemetry + smoke stress (transform-only; no DB)
 php bin/db-crypto-telemetry --out=telemetry/db-crypto-metrics.json
 php bin/db-crypto-stress --iterations=20000 --out=telemetry/db-crypto-stress.json
 php bin/db-crypto-health --generate-keys=1 --max-contexts=25 --out=telemetry/db-crypto-health.json
 
-# inventář klíčů do DB (audit/rotace)
+# key inventory into DB (audit/rotations)
 DB_DSN=\"mysql:host=127.0.0.1;dbname=blackcat\" DB_USER=root DB_PASSWORD=secret BLACKCAT_KEYS_DIR=./tests/fixtures/keys php bin/db-crypto-keys-sync
 ```
 
-### Konfigurace šifrovaných polí
+### Encrypted field configuration
 
-**Single source of truth:** per‑package mapy v `blackcat-database/packages/*/schema/encryption-map.json` (1 soubor = 1 tabulka).
+**Single source of truth:** per-package maps in `blackcat-database/packages/*/schema/encryption-map.json` (1 file = 1 table).
 
-Pravidla:
-- tabulka v mapě musí odpovídat `Definitions::table()`
-- mapa musí explicitně pokrýt všechny sloupce z `Definitions::columns()` (`encrypt`/`hmac`/`passthrough`)
-- `Definitions::uniqueKeys()` nesmí obsahovat `strategy=encrypt` sloupce (nedeterministické; pro UNIQUE používej `hmac`/`passthrough`)
-- `IngressLocator` mapu načítá **natvrdo z packages** (nejde přesměrovat přes env), aby byl zdroj pravdy jednoznačný
+Rules:
+- the table in the map must match `Definitions::table()`
+- the map must explicitly cover all columns from `Definitions::columns()` (`encrypt`/`hmac`/`passthrough`)
+- `Definitions::uniqueKeys()` must not contain `strategy=encrypt` columns (non-deterministic; for UNIQUE use `hmac`/`passthrough`)
+- `IngressLocator` loads the map **hard from packages** (cannot be redirected via env) so the source of truth is unambiguous
 
-Pozn.: pokud máš `blackcat-database` jako git repo se submoduly, musí být `packages/*` checkoutnuté (např. `git submodule update --init --recursive`).
+Note: if you use `blackcat-database` as a git repo with submodules, `packages/*` must be checked out (e.g. `git submodule update --init --recursive`).
 
-`EncryptionMap::fromFile()` (včetně `includes`) zůstává k dispozici pro tooling/testy/experimenty, ale runtime ingress v `blackcat-database` používá packages-only režim.
+`EncryptionMap::fromFile()` (including `includes`) is still available for tooling/tests/experiments, but the runtime ingress in `blackcat-database` runs in packages-only mode.
 
-## API (doporučené použití přes `blackcat-database`)
+## API (recommended via `blackcat-database`)
 
 ```php
 use BlackCat\Core\Database;
@@ -66,36 +70,36 @@ $repo->insert([
 ]);
 ```
 
-Pozn.: Novější `blackcat-database` repos umí ingress načíst i automaticky přes `IngressLocator` (zero‑boilerplate) – explicitní `setIngressAdapter()` je pak volitelné.
+Note: newer `blackcat-database` repositories can auto-load ingress via `IngressLocator` (zero boilerplate). Explicit `setIngressAdapter()` is optional.
 
-Pro transform-only použití (např. testy, queue, offline tooling) viz `example.php` a `docs/INTEGRATIONS.md`.
+For transform-only usage (tests, queues, offline tooling), see `example.php` and `docs/INTEGRATIONS.md`.
 
-Pozn.: `PdoGateway` existuje jen jako legacy reference a je `@deprecated` (v ekosystému nepoužívat).
+Note: `PdoGateway` exists only as a legacy reference and is `@deprecated` (do not use in the ecosystem).
 
-### Možnosti strategií
-- `encrypt` – použije `CryptoManager::encryptContext()` a uloží envelope (JSON string).
-- `hmac` – použije `CryptoManager::hmac()` a uloží podpis (hex/base64 podle nastavení).
-- `passthrough` – ponechá hodnotu beze změny (užitečné při kombinovaných mapách).
+### Strategy options
+- `encrypt` — uses `CryptoManager::encryptContext()` and stores an envelope (JSON string).
+- `hmac` — uses `CryptoManager::hmac()` and stores a signature (hex/base64 depending on settings).
+- `passthrough` — leaves the value unchanged (useful for combined maps).
 
-### Write‑path metadata (volitelné)
-- `write_key_version: true` – doplní `*_key_version` (nebo `key_version_column`) podle klíče použitého pro `encrypt`/`hmac`.
-- `write_encryption_meta: true` – doplní `encryption_meta` (nebo `encryption_meta_column`) jako JSON string s metadaty per field.
+### Write-path metadata (optional)
+- `write_key_version: true` — fills `*_key_version` (or `key_version_column`) based on the key used for `encrypt`/`hmac`.
+- `write_encryption_meta: true` — fills `encryption_meta` (or `encryption_meta_column`) as a JSON string with per-field metadata.
 
 ### Decrypt helper
 
-- `DatabaseCryptoAdapter::decryptPayload()` (a `DatabaseIngressAdapter::decrypt()`) umí dešifrovat sloupce se strategií `encrypt`; `hmac` zůstává beze změny.
+- `DatabaseCryptoAdapter::decryptPayload()` (and `DatabaseIngressAdapter::decrypt()`) decrypts columns with `encrypt` strategy; `hmac` remains unchanged.
 
 ### Deterministic criteria helper
 
-- `DatabaseIngressAdapter::criteria()` slouží pro query/`upsertByKeys` – transformuje pouze `hmac` sloupce (deterministicky) a odmítne `encrypt` (nedeterministické).
+- `DatabaseIngressAdapter::criteria()` is used for queries/`upsertByKeys`: it transforms only `hmac` columns (deterministic) and rejects `encrypt` (non-deterministic).
 
 ### Schema snapshots
 
-Pro volitelnou kontrolu proti živému schématu připrav JSON dle [docs/SCHEMA.md](./docs/SCHEMA.md). `db-crypto-plan` pak zvýrazní sloupce, které v DB chybí, a v CI vrátí nenulový exit kód.
+For optional validation against a live schema, prepare JSON as described in [docs/SCHEMA.md](./docs/SCHEMA.md). `db-crypto-plan` highlights missing columns and returns a non-zero exit code in CI.
 
-## CLI / Integrace
+## CLI / integrations
 
-Použij CLI pro rychlou validaci mapy a tvorbu schema snapshotů:
+Use the CLI to validate the map and build schema snapshots:
 
 - `php bin/db-crypto-plan --schema-source=packages` (validace packages mapy)
 - `DB_USER=... DB_PASSWORD=... php bin/db-crypto-plan --dsn=\"...\" --tables=orders,idempotency_keys` (validace subsetu proti live DB)
@@ -103,16 +107,16 @@ Použij CLI pro rychlou validaci mapy a tvorbu schema snapshotů:
 - `php bin/db-crypto-stress --iterations=20000 --out=telemetry/db-crypto-stress.json`
 - `php bin/db-crypto-health --generate-keys=1 --max-contexts=25 --out=telemetry/db-crypto-health.json`
 
-Praktické integrační poznámky (např. `blackcat-auth`) jsou v [docs/INTEGRATIONS.md](./docs/INTEGRATIONS.md).
+Practical integration notes (e.g. `blackcat-auth`) live in [docs/INTEGRATIONS.md](./docs/INTEGRATIONS.md).
 
-### Telemetrie mapy
+### Map telemetry
 
-Generuj rychlý přehled mapy (počty tabulek/sloupců, rozložení strategií/kontextů/HMAC encoding, chybějící strategie/kontexty) a nahraj ho jako CI artefakt:
+Generate a quick map summary (tables/columns count, strategy/context distribution, HMAC encoding, missing strategy/context) and upload it as a CI artifact:
 
 ```bash
 php bin/db-crypto-telemetry --out=telemetry/db-crypto-metrics.json
 ```
-Výstup je JSON vhodný pro kontroly v CI (např. hlídání chybějících strategií/kontextů).
+The output is JSON suitable for CI checks (e.g. enforcing missing strategies/contexts).
 
 ## Licence
-Proprietární / BlackCat Academy.
+Proprietary / BlackCat Academy.
