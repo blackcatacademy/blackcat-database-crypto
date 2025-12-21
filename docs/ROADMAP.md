@@ -1,7 +1,5 @@
 # blackcat-database-crypto – Roadmap
 
-For the Czech version, see `ROADMAP.cs.md`.
-
 ## Stage 1 – Adaptive Encryptor ✅
 - [x] Configurable table/column map (JSON or PHP array; YAML later).
 - [x] `DatabaseCryptoAdapter` (encrypt + HMAC) delegating to any gateway.

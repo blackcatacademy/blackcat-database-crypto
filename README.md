@@ -10,8 +10,6 @@ Application code provides plaintext payloads and the adapter:
 
 That way, “input → encryption → database” becomes a single step.
 
-For Czech docs, see `README.cs.md`.
-
 ## Quick start
 
 ```bash

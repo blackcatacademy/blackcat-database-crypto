@@ -1,7 +1,5 @@
 # Integrations into other repositories (zero boilerplate)
 
-For the Czech version, see `INTEGRATIONS.cs.md`.
-
 This package is a bridge between:
 
 - `blackcat-crypto` (manifest + `CryptoManager`) — pure crypto logic,

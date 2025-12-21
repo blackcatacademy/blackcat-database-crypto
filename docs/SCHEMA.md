@@ -1,7 +1,5 @@
 # Schema Snapshot Format
 
-For the Czech version, see `SCHEMA.cs.md`.
-
 `bin/db-crypto-plan` can validate the map not only against the manifest, but also against the actual schema. For simplicity it accepts JSON:
 
 ```json

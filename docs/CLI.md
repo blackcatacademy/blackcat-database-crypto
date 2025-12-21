@@ -1,7 +1,5 @@
 # CLI Overview
 
-For the Czech version, see `CLI.cs.md`.
-
 | Command | Description |
 | --- | --- |
 | `bin/db-crypto-plan` | Validates the packages map (`blackcat-database/packages/*/schema/encryption-map.json`) and optionally validates it against schema (`--schema=path.json`, `--schema-source=packages` or `--dsn=...`). Use `--tables=a,b` to validate a subset. `--map=FILE` is intended only for tooling/debug. Exit code `2` indicates warnings. |
