@@ -55,3 +55,86 @@ dbcrypto_register_psr4('BlackCat\\Crypto\\', __DIR__ . '/../../blackcat-crypto/s
 dbcrypto_register_psr4('BlackCat\\Database\\', __DIR__ . '/../../blackcat-database/src');
 dbcrypto_register_psr4('BlackCat\\Database\\', __DIR__ . '/../blackcat-database/src');
 dbcrypto_register_psr4('BlackCat\\Core\\', __DIR__ . '/../../blackcat-core/src');
+
+/**
+ * Autoload blackcat-database generated packages from a checked-out repo (submodules included).
+ *
+ * CI path (this repo root): ./blackcat-database/...
+ * Monorepo path: ../blackcat-database/...
+ */
+function dbcrypto_register_blackcat_database_packages(): void
+{
+    $candidates = [];
+    $fromEnv = getenv('BLACKCAT_DB_ROOT');
+    if (is_string($fromEnv) && $fromEnv !== '') {
+        $candidates[] = $fromEnv;
+    }
+    $candidates[] = __DIR__ . '/../blackcat-database';
+    $candidates[] = __DIR__ . '/../../blackcat-database';
+
+    $dbRoot = null;
+    foreach ($candidates as $c) {
+        $real = realpath($c);
+        if ($real !== false && is_dir($real . '/packages')) {
+            $dbRoot = $real;
+            break;
+        }
+    }
+    if ($dbRoot === null) {
+        return;
+    }
+
+    $packagesDir = $dbRoot . '/packages';
+    $map = []; // ['Orders' => '/path/to/packages/orders/src', ...]
+
+    $entries = @scandir($packagesDir);
+    if (!is_array($entries)) {
+        return;
+    }
+
+    foreach ($entries as $pkgFolder) {
+        if ($pkgFolder === '.' || $pkgFolder === '..') {
+            continue;
+        }
+        $src = $packagesDir . '/' . $pkgFolder . '/src';
+        if (!is_dir($src)) {
+            continue;
+        }
+
+        $parts = preg_split('/[_-]+/', $pkgFolder) ?: [];
+        $pascal = implode('', array_map(static fn(string $p): string => $p === '' ? '' : ucfirst($p), $parts));
+        if ($pascal !== '') {
+            $map[$pascal] = $src;
+        }
+    }
+
+    if ($map === []) {
+        return;
+    }
+
+    spl_autoload_register(static function (string $class) use ($map): void {
+        $prefix = 'BlackCat\\Database\\Packages\\';
+        if (strncmp($class, $prefix, strlen($prefix)) !== 0) {
+            return;
+        }
+
+        $relative = substr($class, strlen($prefix)); // e.g. Orders\Repository\OrderRepository
+        $parts = explode('\\', $relative);
+        $pkg = array_shift($parts);
+        if (!is_string($pkg) || $pkg === '') {
+            return;
+        }
+
+        $base = $map[$pkg] ?? null;
+        if (!is_string($base) || $base === '') {
+            return;
+        }
+
+        $path = $base . '/' . str_replace('\\', '/', implode('\\', $parts)) . '.php';
+        if (is_file($path)) {
+            require $path;
+        }
+    }, true, true);
+}
+
+dbcrypto_register_blackcat_database_packages();

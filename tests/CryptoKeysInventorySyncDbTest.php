@@ -15,13 +15,13 @@ final class CryptoKeysInventorySyncDbTest extends TestCase
 {
     public function testSyncDirectoryWorksAgainstInstalledSchema(): void
     {
-        $dsn = getenv('BC_TEST_DSN') ?: '';
+        $dsn = (string)(getenv('DB_DSN') ?: (getenv('BC_TEST_DSN') ?: ''));
         if ($dsn === '') {
-            self::markTestSkipped('Set BC_TEST_DSN to run DB integration test.');
+            throw new \RuntimeException('Missing DB DSN for integration test. Set DB_DSN (preferred) or BC_TEST_DSN.');
         }
 
-        $user = getenv('BC_TEST_DB_USER') ?: null;
-        $pass = getenv('BC_TEST_DB_PASS') ?: null;
+        $user = getenv('DB_USER') ?: (getenv('BC_TEST_DB_USER') ?: null);
+        $pass = getenv('DB_PASSWORD') ?: (getenv('BC_TEST_DB_PASS') ?: null);
 
         if (!Database::isInitialized()) {
             Database::init([
@@ -70,6 +70,24 @@ final class CryptoKeysInventorySyncDbTest extends TestCase
 
     private function blackcatDatabaseRootDir(): string
     {
+        $fromEnv = getenv('BLACKCAT_DB_ROOT');
+        if (is_string($fromEnv) && $fromEnv !== '') {
+            $p = rtrim($fromEnv, '/\\');
+            if (is_dir($p . '/packages')) {
+                return $p;
+            }
+        }
+
+        $candidates = [
+            realpath(__DIR__ . '/../blackcat-database') ?: null,
+            realpath(__DIR__ . '/../../blackcat-database') ?: null,
+        ];
+        foreach ($candidates as $c) {
+            if (is_string($c) && $c !== '' && is_dir($c . '/packages')) {
+                return $c;
+            }
+        }
+
         $probe = '\\BlackCat\\Database\\Registry';
         if (!class_exists($probe)) {
             throw new \RuntimeException('blackcat-database is not autoloadable (missing ' . $probe . ')');

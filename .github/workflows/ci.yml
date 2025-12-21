@@ -7,6 +7,26 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      DB_DSN: "mysql:host=127.0.0.1;port=3306;dbname=test;charset=utf8mb4"
+      DB_USER: "root"
+      DB_PASSWORD: "root"
+      BC_TEST_DSN: "mysql:host=127.0.0.1;port=3306;dbname=test;charset=utf8mb4"
+      BC_TEST_DB_USER: "root"
+      BC_TEST_DB_PASS: "root"
     steps:
       - uses: actions/checkout@v4
 
