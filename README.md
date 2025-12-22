@@ -119,6 +119,16 @@ CLI tooling is provided by `blackcat-cli` (optional) to keep this repo a pure li
 - `blackcat db-crypto stress --iterations=20000 --out=telemetry/db-crypto-stress.json`
 - `blackcat db-crypto health --generate-keys=1 --max-contexts=25 --out=telemetry/db-crypto-health.json`
 
+## Monitoring & observability (optional)
+
+Operational assets live in `blackcat-monitoring` and are controlled via `blackcat-cli`:
+
+```bash
+blackcat monitoring stack up --pull
+blackcat monitoring stack info
+blackcat verify
+```
+
 Practical integration notes (e.g. `blackcat-auth`) live in [docs/INTEGRATIONS.md](./docs/INTEGRATIONS.md).
 
 ### Map telemetry
