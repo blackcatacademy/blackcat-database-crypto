@@ -45,6 +45,14 @@ blackcat db-crypto health --generate-keys=1 --max-contexts=25 --out=telemetry/db
 DB_DSN=\"mysql:host=127.0.0.1;dbname=blackcat\" DB_USER=root DB_PASSWORD=secret blackcat db-crypto keys-sync --config=./telemetry/runtime.json
 ```
 
+## Run tests (Docker)
+
+Two tests are DB integration tests (require MySQL). A local shortcut is included:
+
+```bash
+./tools/phpunit-docker.sh
+```
+
 ### Encrypted field configuration
 
 **Single source of truth:** per-package maps in `blackcat-database/packages/*/schema/encryption-map.json` (1 file = 1 table).
