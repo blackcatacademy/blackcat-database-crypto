@@ -8,14 +8,14 @@ This package is a bridge between:
 
 Goal: application repositories (e.g. `blackcat-auth`) should focus on business logic. DB connectivity, upserts, and crypto transforms are centralized.
 
-## 1) Minimal configuration (env)
+## 1) Minimal configuration (runtime config)
 
 The ingress adapter (`BlackCat\Database\Crypto\IngressLocator`) can boot automatically if packages maps + keys are available:
 
 - (required) `blackcat-database/packages/*/schema/encryption-map.json` (1 file = 1 table; covers all columns from `Definitions::columns()`)
-- `BLACKCAT_KEYS_DIR=./keys` (standard: `*_vN.key`)
-- (recommended) `BLACKCAT_CRYPTO_MANIFEST=/path/to/contexts/core.json`
-- `DB_DSN=...` (optionally `DB_USER`, `DB_PASSWORD`) — for `BlackCat\Core\Database`
+- (required) runtime config `crypto.keys_dir` (standard key files: `*_vN.key` / `*_vN.hex`)
+- (recommended) runtime config `crypto.manifest` (`blackcat-crypto-manifests/contexts/*.json`)
+- `DB_DSN=...` (optionally `DB_USER`, `DB_PASSWORD`) — for `BlackCat\Core\Database` (operational config; not crypto-critical)
 
 Note: snapshot/gate tools use `blackcat-database` packages as the single source of truth (Definitions), so you do not have to duplicate schemas.
 
@@ -25,7 +25,8 @@ If `blackcat-database` is installed as a git repo with submodules, `packages/*` 
 
 ### Recommended bootstrap (one line)
 
-In application repositories, prefer the `blackcat-crypto` bootstrap which also configures the DB ingress locator:
+In application repositories, prefer the `blackcat-crypto` bootstrap which also configures the DB ingress locator.
+It is **runtime-config-first** and does not rely on env by default:
 
 ```php
 use BlackCat\Crypto\Bootstrap\PlatformBootstrap;

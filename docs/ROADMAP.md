@@ -16,7 +16,7 @@
 - ✅ CI gate: `phpstan` + `phpunit` + `blackcat db-crypto plan` (`--schema-source=packages`).
 - ✅ Gateway `CoreDatabaseGateway` over `BlackCat\Core\Database` (no raw PDO; quoting + SQL comment).
 - ✅ Optional write-path metadata: `write_key_version` + `write_encryption_meta` (auto-fill `*_key_version` and `encryption_meta`).
-- ✅ Integration test (skippable): `DatabaseIngressAdapter` ↔ generated repo (Orders) upsertByKeys + upsertManyRevive end-to-end.
+- ✅ Integration test: `DatabaseIngressAdapter` ↔ generated repo (Orders) upsertByKeys + upsertManyRevive end-to-end (runs against the Docker test DB by default).
 - ✅ Integration notes for other repositories: `docs/INTEGRATIONS.md` (e.g. `blackcat-auth` — criteria + zero-boilerplate write path).
 - ✅ Map modularity: `includes` (compose multiple JSON maps without duplicating configuration).
 - Note: join/ops views for crypto/KMS are defined in `blackcat-database/views-library/crypto/joins-*.yaml` (single source of truth for operational queries across DB tables).

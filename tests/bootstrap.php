@@ -139,3 +139,115 @@ function dbcrypto_register_blackcat_database_packages(): void
 }
 
 dbcrypto_register_blackcat_database_packages();
+
+/**
+ * Helper to set env vars in a PHPUnit-friendly way.
+ */
+function dbcrypto_tests_set_env(string $key, string $value): void
+{
+    if ($value === '') {
+        return;
+    }
+
+    putenv($key . '=' . $value);
+    $_ENV[$key] = $value;
+    $_SERVER[$key] = $value;
+}
+
+/**
+ * Auto-configure DB_DSN for integration tests when running in Docker.
+ *
+ * This repo contains a few DB integration tests. We don't want them skipped when
+ * DB_DSN is not set, so we try to discover a known local test DB (service names).
+ */
+function dbcrypto_tests_autoconfigure_db_env(): void
+{
+    $dsn = getenv('DB_DSN');
+    if (is_string($dsn) && $dsn !== '') {
+        return;
+    }
+
+    $legacy = getenv('BC_TEST_DSN');
+    if (is_string($legacy) && $legacy !== '') {
+        dbcrypto_tests_set_env('DB_DSN', $legacy);
+        return;
+    }
+
+    $user = getenv('DB_USER');
+    if (!is_string($user) || $user === '') {
+        $user = (string)(getenv('BC_TEST_DB_USER') ?: '');
+    }
+
+    $pass = getenv('DB_PASSWORD');
+    if (!is_string($pass) || $pass === '') {
+        $pass = (string)(getenv('BC_TEST_DB_PASS') ?: '');
+    }
+
+    $dbName = getenv('DB_NAME');
+    if (!is_string($dbName) || $dbName === '') {
+        $dbName = (string)(getenv('BC_TEST_DB_NAME') ?: 'test');
+    }
+
+    if (extension_loaded('pdo_mysql')) {
+        if ($user === '') {
+            $user = 'root';
+        }
+        if ($pass === '') {
+            $pass = 'root';
+        }
+
+        $hosts = ['bc-mysql-test', 'mysql', 'mariadb', 'bc-mysql'];
+        foreach ($hosts as $host) {
+            $candidate = sprintf('mysql:host=%s;port=3306;dbname=%s;charset=utf8mb4', $host, $dbName);
+            try {
+                $options = [
+                    \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                    \PDO::ATTR_TIMEOUT => 1,
+                ];
+                if (defined('\PDO::MYSQL_ATTR_CONNECT_TIMEOUT')) {
+                    $options[\PDO::MYSQL_ATTR_CONNECT_TIMEOUT] = 1;
+                }
+
+                $pdo = new \PDO($candidate, $user, $pass, $options);
+                $pdo->query('SELECT 1');
+
+                dbcrypto_tests_set_env('DB_DSN', $candidate);
+                dbcrypto_tests_set_env('DB_USER', $user);
+                dbcrypto_tests_set_env('DB_PASSWORD', $pass);
+                return;
+            } catch (\Throwable) {
+                // try next host
+            }
+        }
+    }
+
+    if (extension_loaded('pdo_pgsql')) {
+        if ($user === '') {
+            $user = 'postgres';
+        }
+        if ($pass === '') {
+            $pass = 'postgres';
+        }
+
+        $hosts = ['bc-postgres-test', 'postgres', 'bc-postgres'];
+        foreach ($hosts as $host) {
+            $candidate = sprintf('pgsql:host=%s;port=5432;dbname=%s', $host, $dbName);
+            try {
+                $pdo = new \PDO($candidate, $user, $pass, [
+                    \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                    \PDO::ATTR_TIMEOUT => 1,
+                ]);
+                $pdo->query('SELECT 1');
+
+                dbcrypto_tests_set_env('DB_DSN', $candidate);
+                dbcrypto_tests_set_env('DB_USER', $user);
+                dbcrypto_tests_set_env('DB_PASSWORD', $pass);
+                return;
+            } catch (\Throwable) {
+                // try next host
+            }
+        }
+    }
+}
+
+dbcrypto_tests_autoconfigure_db_env();

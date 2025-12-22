@@ -23,19 +23,19 @@ final class IngressLocatorIntegrationTest extends TestCase
 
     public function testDatabaseIngressLocatorBootsDatabaseCryptoAdapter(): void
     {
-        if (!class_exists(IngressLocator::class)) {
-            self::markTestSkipped('blackcat-database not available in this workspace.');
-        }
+        self::assertTrue(
+            class_exists(IngressLocator::class),
+            'blackcat-database not available in this workspace (IngressLocator missing).'
+        );
 
         $blackcatDbRoot = $this->resolveBlackcatDatabaseRoot();
-        if ($blackcatDbRoot === null) {
-            self::markTestSkipped('blackcat-database packages not available (expected checkout with submodules).');
-        }
+        self::assertNotNull(
+            $blackcatDbRoot,
+            'blackcat-database packages not available (expected checkout with submodules).'
+        );
 
         $keysDir = realpath(__DIR__ . '/fixtures/keys');
-        if ($keysDir === false) {
-            self::markTestSkipped('Test fixtures not available.');
-        }
+        self::assertIsString($keysDir, 'Test fixtures not available.');
 
         // Runtime config is the preferred/strict path, but this test suite must remain hermetic.
         // Use the explicit keys-dir override (no env fallback).
@@ -60,19 +60,19 @@ final class IngressLocatorIntegrationTest extends TestCase
 
     public function testConfigureOverridesKeysDirWithoutEnv(): void
     {
-        if (!class_exists(IngressLocator::class)) {
-            self::markTestSkipped('blackcat-database not available in this workspace.');
-        }
+        self::assertTrue(
+            class_exists(IngressLocator::class),
+            'blackcat-database not available in this workspace (IngressLocator missing).'
+        );
 
         $blackcatDbRoot = $this->resolveBlackcatDatabaseRoot();
-        if ($blackcatDbRoot === null) {
-            self::markTestSkipped('blackcat-database packages not available (expected checkout with submodules).');
-        }
+        self::assertNotNull(
+            $blackcatDbRoot,
+            'blackcat-database packages not available (expected checkout with submodules).'
+        );
 
         $keysDir = realpath(__DIR__ . '/fixtures/keys');
-        if ($keysDir === false) {
-            self::markTestSkipped('Test fixtures not available.');
-        }
+        self::assertIsString($keysDir, 'Test fixtures not available.');
 
         // Ensure overrides are the only input.
         putenv('BLACKCAT_KEYS_DIR');

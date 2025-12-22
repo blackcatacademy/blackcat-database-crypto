@@ -29,6 +29,24 @@ jobs:
       BC_TEST_DB_PASS: "root"
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: blackcat-database-crypto
+
+      - name: Checkout blackcat-cli (central CLI)
+        uses: actions/checkout@v4
+        with:
+          repository: blackcatacademy/blackcat-cli
+          path: blackcat-cli
+          ref: main
+          token: ${{ secrets.BLACKCAT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Checkout blackcat-cli-spec (manifest schema)
+        uses: actions/checkout@v4
+        with:
+          repository: blackcatdatabase/blackcat-cli-spec
+          path: blackcat-cli-spec
+          ref: main
+          token: ${{ secrets.BLACKCAT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Checkout blackcat-database (packages source of truth)
         uses: actions/checkout@v4
@@ -51,30 +69,33 @@ jobs:
 
       - name: Install dependencies
         run: composer install --no-interaction --no-progress --prefer-dist
+        working-directory: blackcat-database-crypto
 
       - name: Validate packages encryption maps (schema gate)
-        run: php bin/db-crypto-plan --blackcat-db-root=blackcat-database --schema-source=packages
+        run: php blackcat-cli/bin/blackcat db-crypto plan --blackcat-db-root=blackcat-database --schema-source=packages
 
       - name: Static analysis
         run: vendor/bin/phpstan analyse --configuration=phpstan.neon
+        working-directory: blackcat-database-crypto
 
       - name: Tests
         run: vendor/bin/phpunit
+        working-directory: blackcat-database-crypto
 
       - name: Generate telemetry snapshot
-        run: php bin/db-crypto-telemetry --blackcat-db-root=blackcat-database --out=telemetry/db-crypto-metrics.json
+        run: php blackcat-cli/bin/blackcat db-crypto telemetry --blackcat-db-root=blackcat-database --out=blackcat-database-crypto/telemetry/db-crypto-metrics.json
 
       - name: Stress smoke (transform-only)
-        run: php bin/db-crypto-stress --blackcat-db-root=blackcat-database --iterations=20000 --out=telemetry/db-crypto-stress.json
+        run: php blackcat-cli/bin/blackcat db-crypto stress --blackcat-db-root=blackcat-database --iterations=20000 --out=blackcat-database-crypto/telemetry/db-crypto-stress.json
 
       - name: Health report (monitoring-friendly)
-        run: php bin/db-crypto-health --blackcat-db-root=blackcat-database --generate-keys=1 --max-contexts=25 --out=telemetry/db-crypto-health.json
+        run: php blackcat-cli/bin/blackcat db-crypto health --blackcat-db-root=blackcat-database --generate-keys=1 --max-contexts=25 --out=blackcat-database-crypto/telemetry/db-crypto-health.json
 
       - name: Upload telemetry artifact
         uses: actions/upload-artifact@v4
         with:
           name: db-crypto-metrics
           path: |
-            telemetry/db-crypto-metrics.json
-            telemetry/db-crypto-stress.json
-            telemetry/db-crypto-health.json
+            blackcat-database-crypto/telemetry/db-crypto-metrics.json
+            blackcat-database-crypto/telemetry/db-crypto-stress.json
+            blackcat-database-crypto/telemetry/db-crypto-health.json

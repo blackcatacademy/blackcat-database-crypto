@@ -16,9 +16,11 @@ final class CryptoKeysInventorySyncDbTest extends TestCase
     public function testSyncDirectoryWorksAgainstInstalledSchema(): void
     {
         $dsn = (string)(getenv('DB_DSN') ?: (getenv('BC_TEST_DSN') ?: ''));
-        if ($dsn === '') {
-            $this->markTestSkipped('DB integration test requires DB_DSN (preferred) or BC_TEST_DSN.');
-        }
+        self::assertNotSame(
+            '',
+            $dsn,
+            'DB integration test requires a reachable DB. Set DB_DSN (preferred) or BC_TEST_DSN, or run tests on the Docker network with bc-mysql-test.'
+        );
 
         $user = getenv('DB_USER') ?: (getenv('BC_TEST_DB_USER') ?: null);
         $pass = getenv('DB_PASSWORD') ?: (getenv('BC_TEST_DB_PASS') ?: null);

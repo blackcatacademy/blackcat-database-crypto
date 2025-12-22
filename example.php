@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 require __DIR__ . '/vendor/autoload.php';
 
+use BlackCat\Config\Runtime\Config as RuntimeConfig;
+use BlackCat\Config\Runtime\ConfigRepository;
 use BlackCat\Crypto\Config\CryptoConfig;
 use BlackCat\Crypto\CryptoManager;
 use BlackCat\DatabaseCrypto\Adapter\DatabaseCryptoAdapter;
@@ -10,16 +12,32 @@ use BlackCat\DatabaseCrypto\Config\PackagesEncryptionMapLoader;
 use BlackCat\DatabaseCrypto\Gateway\DatabaseGatewayInterface;
 use BlackCat\DatabaseCrypto\Ingress\DatabaseIngressAdapter;
 
-// Convenience defaults for local workspace runs (real apps should set env explicitly).
-$defaultManifest = realpath(__DIR__ . '/../blackcat-crypto-manifests/contexts/core.json') ?: null;
-if ((getenv('BLACKCAT_CRYPTO_MANIFEST') ?: '') === '' && $defaultManifest) {
-    putenv('BLACKCAT_CRYPTO_MANIFEST=' . $defaultManifest);
-    $_ENV['BLACKCAT_CRYPTO_MANIFEST'] = $defaultManifest;
-}
+// Convenience defaults for local workspace runs (real apps should use runtime config files).
+$defaultRuntimeConfig = __DIR__ . '/telemetry/runtime.json';
 $defaultKeysDir = realpath(__DIR__ . '/tests/fixtures/keys') ?: null;
-if ((getenv('BLACKCAT_KEYS_DIR') ?: '') === '' && $defaultKeysDir) {
-    putenv('BLACKCAT_KEYS_DIR=' . $defaultKeysDir);
-    $_ENV['BLACKCAT_KEYS_DIR'] = $defaultKeysDir;
+$defaultManifest = realpath(__DIR__ . '/../blackcat-crypto-manifests/contexts/core.json') ?: null;
+
+if (!RuntimeConfig::isInitialized()) {
+    if (is_file($defaultRuntimeConfig)) {
+        try {
+            RuntimeConfig::initFromJsonFileIfNeeded($defaultRuntimeConfig);
+        } catch (\Throwable) {
+            // Fall back to in-memory defaults below.
+        }
+    }
+}
+
+if (!RuntimeConfig::isInitialized()) {
+    if (!is_string($defaultKeysDir) || $defaultKeysDir === '') {
+        throw new RuntimeException('Missing default keys dir (expected tests/fixtures/keys).');
+    }
+
+    RuntimeConfig::initIfNeeded(ConfigRepository::fromArray([
+        'crypto' => [
+            'keys_dir' => $defaultKeysDir,
+            'manifest' => $defaultManifest,
+        ],
+    ]));
 }
 
 $crypto = CryptoManager::boot(CryptoConfig::fromEnv());

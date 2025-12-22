@@ -21,7 +21,7 @@ use PHPUnit\Framework\TestCase;
  * - RepositoryHelpers ingress hook
  * - DatabaseIngressAdapter + DatabaseCryptoAdapter
  *
- * Requires a real DB (MySQL/Postgres); skipped unless DB_DSN is provided.
+ * Requires a real DB (MySQL/Postgres).
  */
 #[RunTestsInSeparateProcesses]
 #[PreserveGlobalState(false)]
@@ -29,14 +29,17 @@ final class DatabaseIngressAdapterGeneratedRepoIntegrationTest extends TestCase
 {
     public function testUpsertByKeysAndBulkReviveEncryptEndToEnd(): void
     {
-        if (!class_exists(OrderRepository::class)) {
-            $this->markTestSkipped('blackcat-database generated packages not available (Orders repository missing). Ensure packages are checked out and autoloadable to run this integration test.');
-        }
+        self::assertTrue(
+            class_exists(OrderRepository::class),
+            'blackcat-database generated packages not available (Orders repository missing). Ensure blackcat-database is checked out with packages/* and is autoloadable.'
+        );
 
         $dsn = (string)(getenv('DB_DSN') ?: (getenv('BC_TEST_DSN') ?: ''));
-        if ($dsn === '') {
-            $this->markTestSkipped('DB integration test requires DB_DSN (preferred) or BC_TEST_DSN.');
-        }
+        self::assertNotSame(
+            '',
+            $dsn,
+            'DB integration test requires a reachable DB. Set DB_DSN (preferred) or BC_TEST_DSN, or run tests on the Docker network with bc-mysql-test.'
+        );
 
         Database::init([
             'dsn' => $dsn,

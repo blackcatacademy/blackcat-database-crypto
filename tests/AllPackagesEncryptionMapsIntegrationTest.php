@@ -12,14 +12,17 @@ final class AllPackagesEncryptionMapsIntegrationTest extends TestCase
     public function testAllBlackcatDatabasePackagesHaveValidEncryptionMaps(): void
     {
         $root = $this->resolveBlackcatDatabaseRoot();
-        if ($root === null) {
-            self::markTestSkipped('blackcat-database root not available (expected checkout with submodules).');
-        }
+        self::assertNotNull(
+            $root,
+            'blackcat-database root not available (expected checkout with submodules).'
+        );
 
         $definitions = glob($root . '/packages/*/src/Definitions.php') ?: [];
-        if ($definitions === []) {
-            self::markTestSkipped('No packages/*/src/Definitions.php found (submodules likely not initialized).');
-        }
+        self::assertNotSame(
+            [],
+            $definitions,
+            'No packages/*/src/Definitions.php found (submodules likely not initialized).'
+        );
 
         $map = PackagesEncryptionMapLoader::fromBlackcatDatabaseRoot($root);
 
