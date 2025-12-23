@@ -10,6 +10,7 @@
 
 ## Stage 2 – Schema-Aware Diagnostics (current)
 - `blackcat db-crypto plan` validates the map against the manifest (`blackcat-crypto-manifests`) and can also validate against schema (snapshot `--schema`, or `--schema-source=packages` as single source of truth; optional live DB via `--dsn`).
+- Optional trust-kernel cross-check: if Web3 trust is configured, validate that the effective map/manifest roots match the on-chain attested state (tamper-evident diagnostics; prod can fail-closed).
 - `blackcat db-crypto schema` generates snapshots primarily from `blackcat-database` packages (Definitions), optionally from a live DB (`--source=db --dsn=...`) to verify installation.
 - `blackcat db-crypto keys-sync` syncs local key material into the DB table `crypto_keys` (inventory/audit; baseline for rotations).
 - ✅ `blackcat db-crypto telemetry` generates JSON map metrics (coverage/strategies/contexts) as a CI artifact.
