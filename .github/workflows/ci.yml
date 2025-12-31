@@ -28,12 +28,12 @@ jobs:
       BC_TEST_DB_USER: "root"
       BC_TEST_DB_PASS: "root"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           path: blackcat-database-crypto
 
       - name: Checkout blackcat-cli (central CLI)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: blackcatacademy/blackcat-cli
           path: blackcat-cli
@@ -41,7 +41,7 @@ jobs:
           token: ${{ secrets.BLACKCAT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Checkout blackcat-cli-spec (manifest schema)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: blackcatdatabase/blackcat-cli-spec
           path: blackcat-cli-spec
@@ -49,7 +49,7 @@ jobs:
           token: ${{ secrets.BLACKCAT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Checkout blackcat-database (packages source of truth)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: blackcatacademy/blackcat-database
           path: blackcat-database

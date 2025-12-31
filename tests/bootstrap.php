@@ -251,3 +251,124 @@ function dbcrypto_tests_autoconfigure_db_env(): void
 }
 
 dbcrypto_tests_autoconfigure_db_env();
+
+/**
+ * Ensure `blackcat-config` runtime config is available for tests that exercise the DB ingress locator.
+ *
+ * IngressLocator is fail-closed and reads:
+ * - crypto.keys_dir
+ * - crypto.manifest
+ */
+if (class_exists('\\BlackCat\\Config\\Runtime\\Config') && !\BlackCat\Config\Runtime\Config::isInitialized()) {
+    $dbRoot = null;
+    $candidates = [];
+    $fromEnv = getenv('BLACKCAT_DB_ROOT');
+    if (is_string($fromEnv) && trim($fromEnv) !== '') {
+        $candidates[] = $fromEnv;
+    }
+    $candidates[] = __DIR__ . '/../blackcat-database';
+    $candidates[] = __DIR__ . '/../../blackcat-database';
+
+    foreach ($candidates as $c) {
+        $real = realpath($c);
+        if ($real !== false && is_dir($real . '/packages')) {
+            $dbRoot = $real;
+            break;
+        }
+    }
+
+    if ($dbRoot !== null) {
+        $tmpRoot = rtrim(sys_get_temp_dir(), '/\\') . '/blackcat-dbcrypto-tests-' . bin2hex(random_bytes(8));
+        $keysDir = $tmpRoot . '/keys';
+        $manifestPath = $tmpRoot . '/manifest.json';
+        $runtimeConfigPath = $tmpRoot . '/config.runtime.json';
+
+        if (!mkdir($keysDir, 0700, true) && !is_dir($keysDir)) {
+            throw new RuntimeException('tests/bootstrap: unable to create keys dir: ' . $keysDir);
+        }
+
+        $map = \BlackCat\DatabaseCrypto\Config\PackagesEncryptionMapLoader::fromBlackcatDatabaseRoot($dbRoot);
+        $slots = [];
+
+        foreach ($map->all() as $table => $cols) {
+            foreach ($cols as $col => $spec) {
+                if (!is_array($spec)) {
+                    continue;
+                }
+
+                $strategy = strtolower((string)($spec['strategy'] ?? 'passthrough'));
+                if ($strategy === 'passthrough') {
+                    continue;
+                }
+
+                $context = $spec['context'] ?? null;
+                if (!is_string($context) || trim($context) === '') {
+                    throw new RuntimeException(sprintf('tests/bootstrap: missing context for %s.%s (strategy=%s)', (string)$table, (string)$col, $strategy));
+                }
+
+                $type = match ($strategy) {
+                    'encrypt' => 'aead',
+                    'hmac' => 'hmac',
+                    default => throw new RuntimeException(sprintf('tests/bootstrap: unsupported strategy for %s.%s: %s', (string)$table, (string)$col, $strategy)),
+                };
+                $length = $type === 'hmac' ? 64 : 32;
+
+                $keyBase = strtolower(preg_replace('~[^a-zA-Z0-9_.-]+~', '_', $context) ?: $context);
+                $keyBase = strtolower(str_replace(['.', '-'], '_', $keyBase));
+                $keyBase = trim($keyBase, '_');
+                if ($keyBase === '') {
+                    throw new RuntimeException('tests/bootstrap: unable to derive key basename for context: ' . $context);
+                }
+                if (strlen($keyBase) > 120) {
+                    $keyBase = substr($keyBase, 0, 96) . '_' . substr(hash('sha256', $keyBase), 0, 16);
+                }
+
+                $slots[$context] = [
+                    'type' => $type,
+                    'key' => $keyBase,
+                    'length' => $length,
+                ];
+            }
+        }
+
+        ksort($slots);
+
+        foreach ($slots as $context => $def) {
+            $keyName = (string)($def['key'] ?? '');
+            $length = (int)($def['length'] ?? 0);
+            if ($keyName === '' || $length <= 0) {
+                throw new RuntimeException('tests/bootstrap: invalid manifest slot for context ' . (string)$context);
+            }
+
+            $file = $keysDir . '/' . $keyName . '_v1.key';
+            if (file_put_contents($file, random_bytes($length)) === false) {
+                throw new RuntimeException('tests/bootstrap: unable to write key file: ' . $file);
+            }
+            @chmod($file, 0600);
+        }
+
+        $manifest = [
+            'slots' => $slots,
+            'rotation' => new stdClass(),
+        ];
+        $json = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if ($json === false || file_put_contents($manifestPath, $json) === false) {
+            throw new RuntimeException('tests/bootstrap: unable to write manifest file: ' . $manifestPath);
+        }
+        @chmod($manifestPath, 0644);
+
+        $runtime = [
+            'crypto' => [
+                'keys_dir' => $keysDir,
+                'manifest' => $manifestPath,
+            ],
+        ];
+        $json = json_encode($runtime, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if ($json === false || file_put_contents($runtimeConfigPath, $json) === false) {
+            throw new RuntimeException('tests/bootstrap: unable to write runtime config file: ' . $runtimeConfigPath);
+        }
+        @chmod($runtimeConfigPath, 0600);
+
+        \BlackCat\Config\Runtime\Config::initFromJsonFile($runtimeConfigPath);
+    }
+}
