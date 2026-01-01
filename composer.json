@@ -3,6 +3,9 @@
   "description": "Transparent crypto adapter for BlackCat Database writes (field-level envelope encryption + HMAC).",
   "type": "library",
   "license": "proprietary",
+  "non-feature-branches": [
+    "dev"
+  ],
   "require": {
     "php": "^8.3",
     "ext-json": "*",
@@ -10,7 +13,7 @@
     "ext-sodium": "*",
     "blackcatacademy/blackcat-config": "dev-dev",
     "blackcat/crypto": "dev-dev as dev-main",
-    "blackcatacademy/blackcat-database": "dev-dev"
+    "blackcatacademy/blackcat-database": "dev-dev || dev-main || dev-integration/dev || dev-release/main"
   },
   "autoload": {
     "psr-4": {
@@ -28,20 +31,20 @@
   },
   "repositories": [
     {
-      "type": "vcs",
-      "url": "https://github.com/blackcatacademy/blackcat-core"
+      "type": "git",
+      "url": "https://github.com/blackcatacademy/blackcat-core.git"
     },
     {
-      "type": "vcs",
-      "url": "https://github.com/blackcatacademy/blackcat-config"
+      "type": "git",
+      "url": "https://github.com/blackcatacademy/blackcat-config.git"
     },
     {
-      "type": "vcs",
-      "url": "https://github.com/blackcatacademy/blackcat-database"
+      "type": "git",
+      "url": "https://github.com/blackcatacademy/blackcat-database.git"
     },
     {
-      "type": "vcs",
-      "url": "https://github.com/blackcatacademy/blackcat-crypto"
+      "type": "git",
+      "url": "https://github.com/blackcatacademy/blackcat-crypto.git"
     }
   ],
   "minimum-stability": "dev",

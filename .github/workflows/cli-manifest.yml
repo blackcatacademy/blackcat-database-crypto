@@ -15,7 +15,14 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: blackcatdatabase/blackcat-cli-spec
-          path: cli-spec
+          path: blackcat-cli-spec
+          token: ${{ secrets.BLACKCAT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Checkout blackcat-cli
+        uses: actions/checkout@v6
+        with:
+          repository: blackcatacademy/blackcat-cli
+          path: cli
           token: ${{ secrets.BLACKCAT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Setup PHP
@@ -25,8 +32,20 @@ jobs:
           tools: composer
 
       - name: Install cli-spec dependencies
-        working-directory: cli-spec
+        working-directory: blackcat-cli-spec
         run: composer install --no-interaction --prefer-dist --no-progress
 
-      - name: Validate blackcat-cli.json
-        run: php cli-spec/bin/validate-manifest blackcat-cli.json
+      - name: Prepare minimal blackcat-cli config
+        run: |
+          cat > .blackcat-cli.ci.php <<'PHP'
+          <?php
+          $root = getcwd();
+          return [
+            'workspace_root' => $root,
+            'security' => ['allowed_roots' => [$root . DIRECTORY_SEPARATOR]],
+            'commands' => [],
+          ];
+          PHP
+
+      - name: Validate blackcat-cli.json (blackcat-cli)
+        run: php cli/bin/blackcat --cli-config=.blackcat-cli.ci.php verify
