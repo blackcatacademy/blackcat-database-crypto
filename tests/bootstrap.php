@@ -29,6 +29,23 @@ if (!$autoloadFound) {
 }
 
 /**
+ * Test-only guard rails:
+ * - Keep `blackcat-core` usable in unit/integration tests without requiring a full TrustKernel (trust.web3) setup.
+ * - Production deployments must bootstrap TrustKernel and lock guards; tests intentionally install permissive guards.
+ */
+if (class_exists('\\BlackCat\\Core\\Database')) {
+    if (is_callable(['\\BlackCat\\Core\\Database', 'setWriteGuard'])) {
+        \BlackCat\Core\Database::setWriteGuard(static function (string $_sql): void {});
+    }
+    if (is_callable(['\\BlackCat\\Core\\Database', 'setReadGuard'])) {
+        \BlackCat\Core\Database::setReadGuard(static function (string $_sql): void {});
+    }
+    if (is_callable(['\\BlackCat\\Core\\Database', 'setPdoAccessGuard'])) {
+        \BlackCat\Core\Database::setPdoAccessGuard(static function (string $_ctx): void {});
+    }
+}
+
+/**
  * Minimal PSR-4 loader for local development (composer-less or monorepo runs).
  */
 function dbcrypto_register_psr4(string $prefix, string $dir): void
@@ -185,7 +202,7 @@ function dbcrypto_tests_autoconfigure_db_env(): void
 
     $dbName = getenv('DB_NAME');
     if (!is_string($dbName) || $dbName === '') {
-        $dbName = (string)(getenv('BC_TEST_DB_NAME') ?: 'test');
+        $dbName = (string)(getenv('BC_TEST_DB_NAME') ?: '');
     }
 
     if (extension_loaded('pdo_mysql')) {
@@ -197,26 +214,29 @@ function dbcrypto_tests_autoconfigure_db_env(): void
         }
 
         $hosts = ['bc-mysql-test', 'mysql', 'mariadb', 'bc-mysql'];
+        $dbNames = $dbName !== '' ? [$dbName] : ['blackcat_test', 'test'];
         foreach ($hosts as $host) {
-            $candidate = sprintf('mysql:host=%s;port=3306;dbname=%s;charset=utf8mb4', $host, $dbName);
-            try {
-                $options = [
-                    \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
-                    \PDO::ATTR_TIMEOUT => 1,
-                ];
-                if (defined('\PDO::MYSQL_ATTR_CONNECT_TIMEOUT')) {
-                    $options[\PDO::MYSQL_ATTR_CONNECT_TIMEOUT] = 1;
+            foreach ($dbNames as $candidateDb) {
+                $candidate = sprintf('mysql:host=%s;port=3306;dbname=%s;charset=utf8mb4', $host, $candidateDb);
+                try {
+                    $options = [
+                        \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                        \PDO::ATTR_TIMEOUT => 1,
+                    ];
+                    if (defined('\PDO::MYSQL_ATTR_CONNECT_TIMEOUT')) {
+                        $options[\PDO::MYSQL_ATTR_CONNECT_TIMEOUT] = 1;
+                    }
+
+                    $pdo = new \PDO($candidate, $user, $pass, $options);
+                    $pdo->query('SELECT 1');
+
+                    dbcrypto_tests_set_env('DB_DSN', $candidate);
+                    dbcrypto_tests_set_env('DB_USER', $user);
+                    dbcrypto_tests_set_env('DB_PASSWORD', $pass);
+                    return;
+                } catch (\Throwable) {
+                    // try next host/dbname
                 }
-
-                $pdo = new \PDO($candidate, $user, $pass, $options);
-                $pdo->query('SELECT 1');
-
-                dbcrypto_tests_set_env('DB_DSN', $candidate);
-                dbcrypto_tests_set_env('DB_USER', $user);
-                dbcrypto_tests_set_env('DB_PASSWORD', $pass);
-                return;
-            } catch (\Throwable) {
-                // try next host
             }
         }
     }
@@ -230,21 +250,24 @@ function dbcrypto_tests_autoconfigure_db_env(): void
         }
 
         $hosts = ['bc-postgres-test', 'postgres', 'bc-postgres'];
+        $dbNames = $dbName !== '' ? [$dbName] : ['blackcat_test', 'test'];
         foreach ($hosts as $host) {
-            $candidate = sprintf('pgsql:host=%s;port=5432;dbname=%s', $host, $dbName);
-            try {
-                $pdo = new \PDO($candidate, $user, $pass, [
-                    \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
-                    \PDO::ATTR_TIMEOUT => 1,
-                ]);
-                $pdo->query('SELECT 1');
+            foreach ($dbNames as $candidateDb) {
+                $candidate = sprintf('pgsql:host=%s;port=5432;dbname=%s', $host, $candidateDb);
+                try {
+                    $pdo = new \PDO($candidate, $user, $pass, [
+                        \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                        \PDO::ATTR_TIMEOUT => 1,
+                    ]);
+                    $pdo->query('SELECT 1');
 
-                dbcrypto_tests_set_env('DB_DSN', $candidate);
-                dbcrypto_tests_set_env('DB_USER', $user);
-                dbcrypto_tests_set_env('DB_PASSWORD', $pass);
-                return;
-            } catch (\Throwable) {
-                // try next host
+                    dbcrypto_tests_set_env('DB_DSN', $candidate);
+                    dbcrypto_tests_set_env('DB_USER', $user);
+                    dbcrypto_tests_set_env('DB_PASSWORD', $pass);
+                    return;
+                } catch (\Throwable) {
+                    // try next host/dbname
+                }
             }
         }
     }
